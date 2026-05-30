@@ -1,14 +1,17 @@
-# gogoani
-
-CLI tool to search and stream anime with episode navigation.
+# Important, please read before createing Issues
+- This is a fully vibe coded TUI tool built with [Go](https://go.dev/) for watching Anime directly on your terminal with mpv as default media player
+- This is a project for personal use so I **will not** accept any PRs, but Issues and bug reports are welcomed
+- Do I ashamed of myself for using AI slops? **Fuck no**, I do ts because that fuckass crunchyroll company burned down some website's servers so I can't watch anime on those websites now, fuck you dogshitroll your services sucks
+- Am I goated? Yes
+- Why am I not accepting PRs? Cause ts is for personal use and I share it because I feel like it, I'm not advertising it or need people to donate or contribute codes
+- You are **not** obligated to use `gogoani`, you can use others such as [ani-cli](https://github.com/pystardust/ani-cli), [GoAnime](https://github.com/alvarorichard/GoAnime) or any other TUI tools, and as I said this is just a project for personal use so if you plan on creating an Issue just to shame me then sybau ✌️
+- Is LeBron goated? Yes
+- 67
 
 ## Features
 
 - Search anime by name
-- Select from multiple search results
-- Episode navigation menu (Next/Previous/Replay/Select/Quit)
 - Dubbed and subbed versions support
-- Non-blocking playback with immediate menu display
 - Episode progress tracking
 
 ## Installation
@@ -18,23 +21,6 @@ CLI tool to search and stream anime with episode navigation.
 - **Go 1.25+** - [Download](https://go.dev/dl/)
 - **mpv** - Media player (or set `GOGOANI_PLAYER` env var for alternatives)
 - **fzf** (optional) - For fuzzy search interface
-
-#### Install dependencies:
-
-**Arch Linux:**
-```bash
-sudo pacman -S go mpv fzf
-```
-
-**Ubuntu/Debian:**
-```bash
-sudo apt install golang mpv fzf
-```
-
-**macOS:**
-```bash
-brew install go mpv fzf
-```
 
 ### Install gogoani
 
@@ -56,26 +42,14 @@ export PATH="$HOME/.local/bin:$PATH"
 gogoani
 
 # Direct search
-gogoani "anime name"
+gogoani "Overflow"
 
 # Dubbed version
-gogoani --dub "anime name"
+gogoani --dub "Redo of Healer"
 
 # With debug logging
-gogoani --debug "anime name"
+gogoani --debug "Boku no Pico"
 ```
-
-### Episode Navigation
-
-After selecting an episode, mpv will start playing and a menu will appear:
-
-- **Next Episode** - Play next episode
-- **Previous Episode** - Play previous episode
-- **Select Different Episode** - Choose any episode
-- **Replay Current Episode** - Restart current episode
-- **Quit** - Exit the application
-
-Press `Ctrl+C` anytime to quit.
 
 ## Configuration
 
@@ -84,12 +58,6 @@ Set a custom media player via environment variable:
 ```bash
 export GOGOANI_PLAYER=vlc
 ```
-
-## Contributing
-
-**Note:** This is a personal project for my own use. I will **not accept Pull Requests**.
-
-However, **Issues and bug reports are welcome!** If you encounter a bug or have a suggestion, please open an issue.
 
 ## License
 
