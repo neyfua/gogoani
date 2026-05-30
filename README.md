@@ -1,5 +1,5 @@
 # Important, please read before createing Issues
-- This is a fully vibe coded TUI tool built with [Go](https://go.dev/) for watching Anime directly on your terminal with mpv as default media player
+- This is a fully vibe coded TUI tool built with [Go](https://go.dev/) for watching Anime directly on your terminal with [mpv](https://mpv.io/) as default media player
 - This is a project for personal use so I **will not** accept any PRs, but Issues and bug reports are welcomed
 - Do I ashamed of myself for using AI slops? **Fuck no**, I do ts because that fuckass crunchyroll company burned down some website's servers so I can't watch anime on those websites now, fuck you dogshitroll your services sucks
 - Am I goated? Yes
