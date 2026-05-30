@@ -1,0 +1,326 @@
+package provider
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/url"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/neyfua/gogoani/internal/crypto"
+	"github.com/neyfua/gogoani/internal/httpclient"
+	"github.com/neyfua/gogoani/internal/logger"
+	"github.com/neyfua/gogoani/internal/scraper"
+)
+
+const (
+	AllAnimeAPI = "https://api.allanime.day/api"
+	AllAnimeRef = "https://youtu-chan.com"
+)
+
+type AllAnime struct {
+	cache sync.Map // Simple in-memory cache for search and episodes
+}
+
+func NewAllAnime() *AllAnime {
+	return &AllAnime{}
+}
+
+type gqlResponse struct {
+	Data struct {
+		ToBeParsed string `json:"tobeparsed"`
+		Shows struct {
+			Edges []struct {
+				ID                string `json:"_id"`
+				Name              string `json:"name"`
+				AvailableEpisodes struct {
+					Sub int `json:"sub"`
+					Dub int `json:"dub"`
+				} `json:"availableEpisodes"`
+			} `json:"edges"`
+		} `json:"shows"`
+		Show struct {
+			ID                    string `json:"_id"`
+		AvailableEpisodesDetail struct {
+			Sub []any `json:"sub"`
+			Dub []any `json:"dub"`
+			} `json:"availableEpisodesDetail"`
+		} `json:"show"`
+		Episode struct {
+			EpisodeString string `json:"episodeString"`
+			SourceURLs    []struct {
+				SourceName string `json:"sourceName"`
+				SourceURL  string `json:"sourceUrl"`
+				Priority   float64 `json:"priority"`
+			} `json:"sourceUrls"`
+		} `json:"episode"`
+	} `json:"data"`
+}
+
+func processResponse(resp *gqlResponse) error {
+	if resp.Data.ToBeParsed != "" {
+		decrypted, err := crypto.DecryptAllAnime(resp.Data.ToBeParsed)
+		if err != nil {
+			logger.Log.Error("failed to decrypt response", "error", err)
+			return err
+		}
+		if err := json.Unmarshal([]byte(decrypted), &resp.Data); err != nil {
+			logger.Log.Error("failed to unmarshal decrypted data", "error", err)
+			return err
+		}
+	}
+	return nil
+}
+
+// Search queries AllAnime for anime matching the query
+func (a *AllAnime) Search(query string) ([]scraper.Anime, error) {
+	if val, ok := a.cache.Load("search:" + query); ok {
+		if results, ok := val.([]scraper.Anime); ok {
+			return results, nil
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	searchGQL := `query( $search: SearchInput $limit: Int $page: Int $translationType: VaildTranslationTypeEnumType $countryOrigin: VaildCountryOriginEnumType ) { shows( search: $search limit: $limit page: $page translationType: $translationType countryOrigin: $countryOrigin ) { edges { _id name availableEpisodes __typename } }}`
+
+	payload := map[string]any{
+		"variables": map[string]any{
+			"search": map[string]any{
+				"allowAdult":   false,
+				"allowUnknown": false,
+				"query":        query,
+			},
+			"limit":           40,
+			"page":            1,
+			"translationType": "sub",
+			"countryOrigin":   "ALL",
+		},
+		"query": searchGQL,
+	}
+
+	buf := httpclient.GetBuf()
+	defer httpclient.PutBuf(buf)
+	if err := json.NewEncoder(buf).Encode(payload); err != nil {
+		logger.Log.Error("failed to marshal search payload", "error", err)
+		return nil, err
+	}
+
+	headers := map[string]string{
+		"Content-Type": "application/json",
+		"Origin":       AllAnimeRef,
+		"Referer":      AllAnimeRef,
+	}
+
+	resp, err := httpclient.Request(ctx, "POST", AllAnimeAPI, headers, buf)
+	if err != nil {
+		logger.Log.Error("search request failed", "error", err)
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		logger.Log.Error("search returned non-200 status", "status", resp.StatusCode)
+		return nil, fmt.Errorf("status %d", resp.StatusCode)
+	}
+
+	var gqlResp gqlResponse
+	if err := json.NewDecoder(resp.Body).Decode(&gqlResp); err != nil {
+		logger.Log.Error("failed to decode search response", "error", err)
+		return nil, err
+	}
+	if err := processResponse(&gqlResp); err != nil {
+		return nil, err
+	}
+
+	edges := gqlResp.Data.Shows.Edges
+	results := make([]scraper.Anime, 0, len(edges))
+	for _, edge := range edges {
+		results = append(results, scraper.Anime{
+			ID:    edge.ID,
+			Title: edge.Name,
+			URL:   AllAnimeAPI + "/anime/" + edge.ID,
+		})
+	}
+
+	a.cache.Store("search:"+query, results)
+	logger.Log.Debug("search completed", "query", query, "results", len(results))
+	return results, nil
+}
+
+// Episodes fetches the episode list for an anime
+func (a *AllAnime) Episodes(anime scraper.Anime, mode string) ([]scraper.Episode, error) {
+	cacheKey := "episodes:" + anime.ID + ":" + mode
+	if val, ok := a.cache.Load(cacheKey); ok {
+		if results, ok := val.([]scraper.Episode); ok {
+			return results, nil
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	episodesGQL := `query ($showId: String!) { show( _id: $showId ) { _id availableEpisodesDetail }}`
+
+	payload := map[string]any{
+		"variables": map[string]any{
+			"showId": anime.ID,
+		},
+		"query": episodesGQL,
+	}
+
+	buf := httpclient.GetBuf()
+	defer httpclient.PutBuf(buf)
+	if err := json.NewEncoder(buf).Encode(payload); err != nil {
+		logger.Log.Error("failed to marshal episodes payload", "error", err)
+		return nil, err
+	}
+
+	headers := map[string]string{
+		"Content-Type": "application/json",
+		"Origin":       AllAnimeRef,
+		"Referer":      AllAnimeRef,
+	}
+
+	resp, err := httpclient.Request(ctx, "POST", AllAnimeAPI, headers, buf)
+	if err != nil {
+		logger.Log.Error("episodes request failed", "error", err)
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		logger.Log.Error("episodes returned non-200 status", "status", resp.StatusCode)
+		return nil, fmt.Errorf("status %d", resp.StatusCode)
+	}
+
+	var gqlResp gqlResponse
+	if err := json.NewDecoder(resp.Body).Decode(&gqlResp); err != nil {
+		logger.Log.Error("failed to decode episodes response", "error", err)
+		return nil, err
+	}
+	if err := processResponse(&gqlResp); err != nil {
+		return nil, err
+	}
+
+	var episodeList []any
+	if mode == "dub" {
+		episodeList = gqlResp.Data.Show.AvailableEpisodesDetail.Dub
+	} else {
+		episodeList = gqlResp.Data.Show.AvailableEpisodesDetail.Sub
+	}
+
+	episodes := make([]scraper.Episode, 0, len(episodeList))
+	for i := range episodeList {
+		episodes = append(episodes, scraper.Episode{
+			Number: i + 1,
+			Title:  "",
+			Mode:   mode,
+		})
+	}
+
+	a.cache.Store(cacheKey, episodes)
+	logger.Log.Debug("episodes fetched", "anime_id", anime.ID, "count", len(episodes), "mode", mode)
+	return episodes, nil
+}
+
+// StreamURL fetches the direct stream URL for an episode
+func (a *AllAnime) StreamURL(anime scraper.Anime, episode scraper.Episode) (string, string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	vars := fmt.Sprintf(`{"showId":"%s","translationType":"%s","episodeString":"%d"}`, anime.ID, episode.Mode, episode.Number)
+	exts := `{"persistedQuery":{"version":1,"sha256Hash":"d405d0edd690624b66baba3068e0edc3ac90f1597d898a1ec8db4e5c43c00fec"}}`
+
+	u, err := url.Parse(AllAnimeAPI)
+	if err != nil {
+		return "", "", err
+	}
+	q := u.Query()
+	q.Set("variables", vars)
+	q.Set("extensions", exts)
+	u.RawQuery = q.Encode()
+
+	headers := map[string]string{
+		"Origin":  AllAnimeRef,
+		"Referer": AllAnimeRef,
+	}
+
+	resp, err := httpclient.Request(ctx, "GET", u.String(), headers, nil)
+	if err != nil {
+		logger.Log.Error("stream request failed", "error", err)
+		return "", "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		logger.Log.Error("stream returned non-200 status", "status", resp.StatusCode)
+		return "", "", fmt.Errorf("status %d", resp.StatusCode)
+	}
+
+	var gqlResp gqlResponse
+	if err := json.NewDecoder(resp.Body).Decode(&gqlResp); err != nil {
+		logger.Log.Error("failed to decode stream response", "error", err)
+		return "", "", err
+	}
+	if err := processResponse(&gqlResp); err != nil {
+		return "", "", err
+	}
+
+	if len(gqlResp.Data.Episode.SourceURLs) == 0 {
+		logger.Log.Error("no sources found", "anime_id", anime.ID, "episode", episode.Number)
+		return "", "", fmt.Errorf("no sources available")
+	}
+
+	// Sort sources by priority descending (highest priority first)
+	sort.Slice(gqlResp.Data.Episode.SourceURLs, func(i, j int) bool {
+		return gqlResp.Data.Episode.SourceURLs[i].Priority > gqlResp.Data.Episode.SourceURLs[j].Priority
+	})
+
+	var sourceURL string
+	var priority float64
+	for _, s := range gqlResp.Data.Episode.SourceURLs {
+		u := s.SourceURL
+		if strings.HasPrefix(u, "--") {
+			u = crypto.DecodeHexMap(u)
+		}
+		if strings.Contains(u, "tobeparsed") {
+			dec, err := crypto.DecryptAllAnime(u)
+			if err != nil {
+				continue
+			}
+			u = dec
+		}
+
+		// Skip /apivtwo/clock.json URLs as they are currently problematic
+		if strings.Contains(u, "clock.json") {
+			continue
+		}
+
+		sourceURL = u
+		priority = s.Priority
+		break
+	}
+
+	if sourceURL == "" {
+		logger.Log.Error("no playable sources found", "anime_id", anime.ID, "episode", episode.Number)
+		return "", "", fmt.Errorf("no playable sources available")
+	}
+
+	if !strings.HasPrefix(sourceURL, "http") && !strings.HasPrefix(sourceURL, "//") {
+		// If it's a relative path, prepend the host
+		sourceURL = "https://tools.fast4speed.rsvp" + sourceURL
+	}
+
+	referer := AllAnimeRef
+	if strings.Contains(sourceURL, "mp4upload.com") {
+		referer = "https://www.mp4upload.com"
+	}
+
+	logger.Log.Debug("stream url fetched", "anime_id", anime.ID, "episode", episode.Number, "priority", priority)
+	return sourceURL, referer, nil
+}
