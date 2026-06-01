@@ -2,18 +2,73 @@ package ui
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
+	"github.com/neyfua/gogoani/internal/anilist"
 	"github.com/neyfua/gogoani/internal/config"
 	"github.com/neyfua/gogoani/internal/logger"
 	"github.com/neyfua/gogoani/internal/player"
 	"github.com/neyfua/gogoani/internal/scraper"
 	"github.com/neyfua/gogoani/pkg/provider"
 )
+
+// PlayAnimeByTitle searches for an anime by title and starts the episode playback flow,
+// bypassing the anime selection step if there's an exact title match or only one result.
+func PlayAnimeByTitle(cfg *config.Config, title string, mode string) error {
+	aa := provider.NewAllAnime()
+	pl := player.New(cfg.Player)
+
+	animes, err := aa.Search(title)
+	if err != nil {
+		return err
+	}
+	if len(animes) == 0 {
+		return fmt.Errorf("no results found for %q", title)
+	}
+
+	var anime scraper.Anime
+	var found bool
+	if len(animes) == 1 {
+		anime = animes[0]
+		found = true
+	} else {
+		// Try exact match first
+		for _, a := range animes {
+			if strings.EqualFold(a.Title, title) {
+				anime = a
+				found = true
+				break
+			}
+		}
+		// Try substring match (e.g. AllAnime "86" matches AniList "86 EIGHTY-SIX")
+		if !found {
+			titleLower := strings.ToLower(title)
+			for _, a := range animes {
+				aLower := strings.ToLower(a.Title)
+				if strings.Contains(titleLower, aLower) || strings.Contains(aLower, titleLower) {
+					anime = a
+					found = true
+					break
+				}
+			}
+		}
+	}
+	if !found {
+		selected, err := selectAnime(animes, "Select anime: ")
+		if err != nil {
+			return err
+		}
+		anime = selected
+	}
+
+	return playEpisodes(cfg, aa, pl, anime, mode)
+}
 
 func Run(cfg *config.Config, query string, mode string) error {
 	aa := provider.NewAllAnime()
@@ -43,88 +98,95 @@ func Run(cfg *config.Config, query string, mode string) error {
 			return err
 		}
 
-		logger.Log.Debug("fetching episodes", "anime", anime.Title, "mode", mode)
-		episodes, err := aa.Episodes(anime, mode)
+		if err := playEpisodes(cfg, aa, pl, anime, mode); err != nil {
+			return err
+		}
+
+		query = ""
+	}
+}
+
+func playEpisodes(cfg *config.Config, aa *provider.AllAnime, pl *player.Player, anime scraper.Anime, mode string) error {
+	logger.Log.Debug("fetching episodes", "anime", anime.Title, "mode", mode)
+	episodes, err := aa.Episodes(anime, mode)
+	if err != nil {
+		return err
+	}
+
+	if len(episodes) == 0 {
+		fmt.Println("No episodes found.")
+		return nil
+	}
+
+	// Initial episode selection
+	episodeIdx, err := selectEpisode(episodes, "Select episode: ")
+	if err != nil {
+		return err
+	}
+
+	// Playback loop
+	for {
+		if episodeIdx < 0 || episodeIdx >= len(episodes) {
+			return fmt.Errorf("episode index %d out of bounds (0-%d)", episodeIdx, len(episodes)-1)
+		}
+		episode := episodes[episodeIdx]
+
+		logger.Log.Debug("fetching stream url", "anime", anime.Title, "episode", episode.Number)
+		url, referer, err := aa.StreamURL(anime, episode)
 		if err != nil {
 			return err
 		}
 
-		if len(episodes) == 0 {
-			fmt.Println("No episodes found.")
-			return nil
+		if url == "" {
+			return fmt.Errorf("no stream URL available for %s episode %d", anime.Title, episode.Number)
 		}
 
-		// Initial episode selection
-		episodeIdx, err := selectEpisode(episodes, "Select episode: ")
-		if err != nil {
-			return err
-		}
-
-		watchAnother := false
-
-		// Playback loop
-		for {
-			if episodeIdx < 0 || episodeIdx >= len(episodes) {
-				return fmt.Errorf("episode index %d out of bounds (0-%d)", episodeIdx, len(episodes)-1)
+		logger.Log.Debug("playing", "url", url, "referer", referer)
+		if referer != "" {
+			if err := pl.Start(url, "--referrer="+referer); err != nil {
+				return err
 			}
-			episode := episodes[episodeIdx]
+		} else {
+			if err := pl.Start(url); err != nil {
+				return err
+			}
+		}
 
-			logger.Log.Debug("fetching stream url", "anime", anime.Title, "episode", episode.Number)
-			url, referer, err := aa.StreamURL(anime, episode)
+		// Show menu immediately while mpv plays
+		action, err := showEpisodeMenu(episodes, episodeIdx)
+		pl.Stop() // kill mpv regardless of action
+
+		watchedEp := episode.Number
+
+		// Sync the episode that was just watched (skip only if we replayed)
+		if cfg.AutoSync && action != "replay" {
+			syncAniList(cfg, anime.Title, watchedEp)
+		}
+
+		if err != nil {
+			if strings.Contains(err.Error(), "selection cancelled") {
+				return nil // silent exit on user cancellation
+			}
+			return err
+		}
+
+		switch action {
+		case "prev":
+			episodeIdx--
+		case "next":
+			episodeIdx++
+		case "replay":
+			// same index, continue
+		case "select":
+			newIdx, err := selectEpisode(episodes, "Select episode: ")
 			if err != nil {
 				return err
 			}
-
-			if url == "" {
-				return fmt.Errorf("no stream URL available for %s episode %d", anime.Title, episode.Number)
-			}
-
-			logger.Log.Debug("playing", "url", url, "referer", referer)
-			if referer != "" {
-				if err := pl.Start(url, "--referrer="+referer); err != nil {
-					return err
-				}
-			} else {
-				if err := pl.Start(url); err != nil {
-					return err
-				}
-			}
-
-			// Show menu immediately while mpv plays
-			action, err := showEpisodeMenu(episodes, episodeIdx)
-			pl.Stop() // kill mpv regardless of action
-			if err != nil {
-				return err // user cancelled / quit
-			}
-
-			switch action {
-			case "prev":
-				episodeIdx--
-			case "next":
-				episodeIdx++
-			case "replay":
-				// same index, continue
-			case "select":
-				newIdx, err := selectEpisode(episodes, "Select episode: ")
-				if err != nil {
-					return err
-				}
-				episodeIdx = newIdx
-			case "watch_another":
-				watchAnother = true
-				break
-			case "quit":
-				return nil
-			}
-
-			if watchAnother {
-				break
-			}
-		}
-
-		if watchAnother {
-			query = ""
-			continue
+			episodeIdx = newIdx
+		case "watch_another":
+			return nil
+		case "quit":
+			return nil
 		}
 	}
 }
@@ -281,7 +343,7 @@ func promptInput(prompt string) (string, error) {
 }
 
 func fzfSelect[T fmt.Stringer](items []T, prompt string) (T, error) {
-	cmd := exec.Command("fzf", "--prompt", prompt)
+	cmd := exec.Command("fzf", "--prompt", prompt, "--bind", "shift-up:page-up,shift-down:page-down")
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -348,4 +410,35 @@ func numericSelect[T fmt.Stringer](items []T, prompt string) (T, error) {
 		return items[0], fmt.Errorf("invalid selection")
 	}
 	return items[idx-1], nil
+}
+
+func syncAniList(cfg *config.Config, title string, episodeNum int) {
+	entries, err := anilist.LoadList()
+	if err != nil {
+		logger.Log.Debug("anilist: no cached list, skipping sync", "error", err)
+		return
+	}
+	entry := anilist.MatchEntry(entries, title)
+	if entry == nil {
+		logger.Log.Debug("anilist: no matching entry found", "title", title)
+		return
+	}
+
+	if episodeNum == entry.Progress {
+		logger.Log.Debug("anilist: episode already synced, skipping", "title", entry.Title, "episode", episodeNum)
+		return
+	}
+
+	client := anilist.NewClient(cfg.AniList.Token)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if _, err := client.SaveProgress(ctx, entry.MediaID, episodeNum, entry.Status); err != nil {
+		logger.Log.Warn("anilist: sync failed", "title", entry.Title, "error", err)
+		return
+	}
+	if err := anilist.UpdateEntryProgress(entry.ListEntryID, entry.MediaID, episodeNum); err != nil {
+		logger.Log.Warn("anilist: cache update failed", "error", err)
+	}
+	logger.Log.Info("anilist: synced", "title", entry.Title, "episode", episodeNum)
+	fmt.Fprintf(os.Stderr, "✓ Synced %q episode %d to AniList\n", entry.Title, episodeNum)
 }

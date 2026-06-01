@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/neyfua/gogoani/internal/crypto"
@@ -22,17 +22,17 @@ const (
 )
 
 type AllAnime struct {
-	cache sync.Map // Simple in-memory cache for search and episodes
+	cache map[string]any // in-memory cache for search and episodes
 }
 
 func NewAllAnime() *AllAnime {
-	return &AllAnime{}
+	return &AllAnime{cache: make(map[string]any)}
 }
 
 type gqlResponse struct {
 	Data struct {
 		ToBeParsed string `json:"tobeparsed"`
-		Shows struct {
+		Shows      struct {
 			Edges []struct {
 				ID                string `json:"_id"`
 				Name              string `json:"name"`
@@ -43,17 +43,21 @@ type gqlResponse struct {
 			} `json:"edges"`
 		} `json:"shows"`
 		Show struct {
-			ID                    string `json:"_id"`
-		AvailableEpisodesDetail struct {
-			Sub []any `json:"sub"`
-			Dub []any `json:"dub"`
+			ID                string `json:"_id"`
+			AvailableEpisodes struct {
+				Sub int `json:"sub"`
+				Dub int `json:"dub"`
+			} `json:"availableEpisodes"`
+			AvailableEpisodesDetail struct {
+				Sub []any `json:"sub"`
+				Dub []any `json:"dub"`
 			} `json:"availableEpisodesDetail"`
 		} `json:"show"`
 		Episode struct {
 			EpisodeString string `json:"episodeString"`
 			SourceURLs    []struct {
-				SourceName string `json:"sourceName"`
-				SourceURL  string `json:"sourceUrl"`
+				SourceName string  `json:"sourceName"`
+				SourceURL  string  `json:"sourceUrl"`
 				Priority   float64 `json:"priority"`
 			} `json:"sourceUrls"`
 		} `json:"episode"`
@@ -77,10 +81,8 @@ func processResponse(resp *gqlResponse) error {
 
 // Search queries AllAnime for anime matching the query
 func (a *AllAnime) Search(query string) ([]scraper.Anime, error) {
-	if val, ok := a.cache.Load("search:" + query); ok {
-		if results, ok := val.([]scraper.Anime); ok {
-			return results, nil
-		}
+	if results, ok := a.cache["search:"+query].([]scraper.Anime); ok {
+		return results, nil
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -143,11 +145,10 @@ func (a *AllAnime) Search(query string) ([]scraper.Anime, error) {
 		results = append(results, scraper.Anime{
 			ID:    edge.ID,
 			Title: edge.Name,
-			URL:   AllAnimeAPI + "/anime/" + edge.ID,
 		})
 	}
 
-	a.cache.Store("search:"+query, results)
+	a.cache["search:"+query] = results
 	logger.Log.Debug("search completed", "query", query, "results", len(results))
 	return results, nil
 }
@@ -155,16 +156,14 @@ func (a *AllAnime) Search(query string) ([]scraper.Anime, error) {
 // Episodes fetches the episode list for an anime
 func (a *AllAnime) Episodes(anime scraper.Anime, mode string) ([]scraper.Episode, error) {
 	cacheKey := "episodes:" + anime.ID + ":" + mode
-	if val, ok := a.cache.Load(cacheKey); ok {
-		if results, ok := val.([]scraper.Episode); ok {
-			return results, nil
-		}
+	if results, ok := a.cache[cacheKey].([]scraper.Episode); ok {
+		return results, nil
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	episodesGQL := `query ($showId: String!) { show( _id: $showId ) { _id availableEpisodesDetail }}`
+	episodesGQL := `query ($showId: String!) { show( _id: $showId ) { _id availableEpisodes availableEpisodesDetail }}`
 
 	payload := map[string]any{
 		"variables": map[string]any{
@@ -215,15 +214,25 @@ func (a *AllAnime) Episodes(anime scraper.Anime, mode string) ([]scraper.Episode
 	}
 
 	episodes := make([]scraper.Episode, 0, len(episodeList))
-	for i := range episodeList {
+	for _, raw := range episodeList {
+		s, ok := raw.(string)
+		if !ok {
+			logger.Log.Debug("skipping non-string episode entry", "type", fmt.Sprintf("%T", raw))
+			continue
+		}
+		num, err := strconv.Atoi(s)
+		if err != nil || num <= 0 {
+			logger.Log.Debug("skipping invalid episode entry", "value", s)
+			continue
+		}
 		episodes = append(episodes, scraper.Episode{
-			Number: i + 1,
+			Number: num,
 			Title:  "",
 			Mode:   mode,
 		})
 	}
 
-	a.cache.Store(cacheKey, episodes)
+	a.cache[cacheKey] = episodes
 	logger.Log.Debug("episodes fetched", "anime_id", anime.ID, "count", len(episodes), "mode", mode)
 	return episodes, nil
 }

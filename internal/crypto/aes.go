@@ -10,11 +10,19 @@ import (
 	"fmt"
 )
 
-var AllAnimeKey []byte
+var (
+	AllAnimeKey    []byte
+	allAnimeCipher cipher.Block
+)
 
 func init() {
 	hash := sha256.Sum256([]byte("Xot36i3lK3:v1"))
 	AllAnimeKey = hash[:]
+	var err error
+	allAnimeCipher, err = aes.NewCipher(AllAnimeKey)
+	if err != nil {
+		panic("aes: failed to create cipher: " + err.Error())
+	}
 }
 
 // DecryptAllAnime decrypts the tobeparsed string from AllAnime API response
@@ -28,12 +36,9 @@ func DecryptAllAnime(encoded string) (string, error) {
 		return "", errors.New("data too short")
 	}
 
-	// IV (12 bytes from offset 1 to 12)
-	ivBytes := data[1:13]
-	
 	// OpenSSL AES-256-CTR IV is 16 bytes: 12 bytes iv + 4 bytes counter (0x00000002)
-	iv := make([]byte, 16)
-	copy(iv[0:12], ivBytes)
+	var iv [16]byte
+	copy(iv[:12], data[1:13])
 	iv[12] = 0x00
 	iv[13] = 0x00
 	iv[14] = 0x00
@@ -41,12 +46,7 @@ func DecryptAllAnime(encoded string) (string, error) {
 
 	ciphertext := data[13 : len(data)-16]
 
-	block, err := aes.NewCipher(AllAnimeKey)
-	if err != nil {
-		return "", fmt.Errorf("new cipher: %w", err)
-	}
-
-	stream := cipher.NewCTR(block, iv)
+	stream := cipher.NewCTR(allAnimeCipher, iv[:])
 	plaintext := make([]byte, len(ciphertext))
 	stream.XORKeyStream(plaintext, ciphertext)
 
