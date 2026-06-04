@@ -17,6 +17,7 @@
     + Synchronize your AniList collection
     + Keep episode progress synced automatically
     + Check your anime list statuses directly
+    + Modify your anime progress and status directly, with changes automatically synced to AniList
 
 ## Installation
 
