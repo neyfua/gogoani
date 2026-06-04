@@ -41,6 +41,9 @@ func resolvePlayer(bin string) string {
 
 // Play opens the given URL in the media player with optional extra arguments.
 func (p *Player) Play(url string, args ...string) error {
+	if p.Bin == "" {
+		return fmt.Errorf("player: no binary configured")
+	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	cmdArgs := append([]string{url}, args...)
@@ -55,6 +58,9 @@ func (p *Player) Play(url string, args ...string) error {
 //
 //nolint:gosec // G204: Player binary path is from user env var or config, verified at startup
 func (p *Player) Start(url string, args ...string) error {
+	if p.Bin == "" {
+		return fmt.Errorf("player: no binary configured")
+	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	cmdArgs := append([]string{url}, args...)

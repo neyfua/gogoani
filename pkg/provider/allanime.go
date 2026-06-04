@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/neyfua/gogoani/internal/crypto"
@@ -24,6 +25,7 @@ const (
 )
 
 type AllAnime struct {
+	mu    sync.RWMutex
 	cache map[string]any // in-memory cache for search and episodes
 }
 
@@ -83,8 +85,11 @@ func processResponse(resp *gqlResponse) error {
 
 // Search queries AllAnime for anime matching the query
 func (a *AllAnime) Search(query string) ([]scraper.Anime, error) {
-	if results, ok := a.cache["search:"+query].([]scraper.Anime); ok {
-		return results, nil
+	a.mu.RLock()
+	results, ok := a.cache["search:"+query].([]scraper.Anime)
+	a.mu.RUnlock()
+	if ok {
+		return slices.Clone(results), nil
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -141,7 +146,7 @@ func (a *AllAnime) Search(query string) ([]scraper.Anime, error) {
 	}
 
 	edges := gqlResp.Data.Shows.Edges
-	results := make([]scraper.Anime, 0, len(edges))
+	results = make([]scraper.Anime, 0, len(edges))
 	for _, edge := range edges {
 		results = append(results, scraper.Anime{
 			ID:    edge.ID,
@@ -149,7 +154,9 @@ func (a *AllAnime) Search(query string) ([]scraper.Anime, error) {
 		})
 	}
 
+	a.mu.Lock()
 	a.cache["search:"+query] = results
+	a.mu.Unlock()
 	logger.Log.Debug("search completed", "query", query, "results", len(results))
 	return results, nil
 }
@@ -157,8 +164,11 @@ func (a *AllAnime) Search(query string) ([]scraper.Anime, error) {
 // Episodes fetches the episode list for an anime
 func (a *AllAnime) Episodes(anime scraper.Anime, mode string) ([]scraper.Episode, error) {
 	cacheKey := "episodes:" + anime.ID + ":" + mode
-	if results, ok := a.cache[cacheKey].([]scraper.Episode); ok {
-		return results, nil
+	a.mu.RLock()
+	results, ok := a.cache[cacheKey].([]scraper.Episode)
+	a.mu.RUnlock()
+	if ok {
+		return slices.Clone(results), nil
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -233,7 +243,9 @@ func (a *AllAnime) Episodes(anime scraper.Anime, mode string) ([]scraper.Episode
 		})
 	}
 
+	a.mu.Lock()
 	a.cache[cacheKey] = episodes
+	a.mu.Unlock()
 	logger.Log.Debug("episodes fetched", "anime_id", anime.ID, "count", len(episodes), "mode", mode)
 	return episodes, nil
 }
