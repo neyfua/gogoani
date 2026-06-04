@@ -168,6 +168,7 @@ func deleteEntry(client *Client, entry *AnimeEntry) error {
 	return nil
 }
 
+//nolint:gosec // G204: fzf subprocess with controlled input (no user data in args)
 func fzfSelect(entries []AnimeEntry, prompt string) (string, error) {
 	cmd := exec.Command("fzf", "--ansi", "--no-sort", "--multi", "--prompt", prompt, "--header", "esc/ctrl+c back | tab multi-select", "--bind", "shift-up:page-up,shift-down:page-down")
 	stdin, err := cmd.StdinPipe()

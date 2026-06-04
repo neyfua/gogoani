@@ -2,7 +2,6 @@ package anilist
 
 import "fmt"
 
-
 type MediaListStatus string
 
 const (
@@ -13,7 +12,6 @@ const (
 	StatusPlanning  MediaListStatus = "PLANNING"
 	StatusRepeating MediaListStatus = "REPEATING"
 )
-
 
 func (s MediaListStatus) Label() string {
 	switch s {
@@ -34,7 +32,6 @@ func (s MediaListStatus) Label() string {
 	}
 }
 
-
 func ParseStatus(label string) (MediaListStatus, bool) {
 	switch label {
 	case "watching", "current":
@@ -54,7 +51,6 @@ func ParseStatus(label string) (MediaListStatus, bool) {
 	}
 }
 
-
 func AllStatuses() []MediaListStatus {
 	return []MediaListStatus{
 		StatusWatching,
@@ -65,9 +61,6 @@ func AllStatuses() []MediaListStatus {
 		StatusRepeating,
 	}
 }
-
-
-
 
 type ViewerResponse struct {
 	Data struct {
@@ -83,7 +76,6 @@ type ViewerResponse struct {
 	} `json:"data"`
 	Errors []GraphQLError `json:"errors,omitempty"`
 }
-
 
 type MediaSearchResponse struct {
 	Data struct {
@@ -107,7 +99,6 @@ type MediaSearchResponse struct {
 	} `json:"data"`
 	Errors []GraphQLError `json:"errors,omitempty"`
 }
-
 
 type MediaListResponse struct {
 	Data struct {
@@ -140,7 +131,6 @@ type MediaListResponse struct {
 	Errors []GraphQLError `json:"errors,omitempty"`
 }
 
-
 type SaveMediaListResponse struct {
 	Data struct {
 		SaveMediaListEntry struct {
@@ -152,7 +142,6 @@ type SaveMediaListResponse struct {
 	Errors []GraphQLError `json:"errors,omitempty"`
 }
 
-
 type GraphQLError struct {
 	Message   string `json:"message"`
 	Locations []struct {
@@ -161,6 +150,11 @@ type GraphQLError struct {
 	} `json:"locations,omitempty"`
 }
 
+type OAuthTokenResponse struct {
+	AccessToken string `json:"access_token"`
+	TokenType   string `json:"token_type"`
+	ExpiresIn   int    `json:"expires_in"`
+}
 
 type AnimeEntry struct {
 	ListEntryID int             `json:"listEntryId"`
@@ -174,14 +168,12 @@ type AnimeEntry struct {
 	CoverURL    string          `json:"coverUrl"`
 }
 
-
 func (e AnimeEntry) TitleDisplay() string {
 	if e.Title == "" {
 		return "Unknown"
 	}
 	return e.Title
 }
-
 
 func (e AnimeEntry) TotalEpisodesDisplay() string {
 	if e.TotalEps == 0 {

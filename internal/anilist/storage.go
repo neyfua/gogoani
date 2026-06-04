@@ -20,7 +20,7 @@ func CacheDir() (string, error) {
 		return "", fmt.Errorf("anilist: get home dir: %w", err)
 	}
 	dir := filepath.Join(home, ".cache", cacheDirName)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0700); err != nil {
 		return "", fmt.Errorf("anilist: create cache dir: %w", err)
 	}
 	return dir, nil
@@ -162,14 +162,21 @@ func writeJSON(path string, v any) error {
 	if err != nil {
 		return fmt.Errorf("anilist: marshal json: %w", err)
 	}
-	if err := os.WriteFile(path, data, 0600); err != nil {
+
+	dir := filepath.Dir(path)
+	if fi, err := os.Lstat(dir); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("anilist: refusing to write through symlink")
+	}
+
+	tmpPath := path + ".tmp"
+	if err := os.WriteFile(tmpPath, data, 0600); err != nil {
 		return fmt.Errorf("anilist: write file %s: %w", path, err)
 	}
-	return nil
+	return os.Rename(tmpPath, path)
 }
 
 func readJSON(path string, v any) error {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
 		return fmt.Errorf("anilist: read file %s: %w", path, err)
 	}

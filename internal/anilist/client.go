@@ -6,11 +6,20 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"strings"
 	"time"
 
 	"github.com/neyfua/gogoani/internal/httpclient"
+	"github.com/neyfua/gogoani/internal/logger"
 )
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
 
 const (
 	GraphQLAPI = "https://graphql.anilist.co"
@@ -46,6 +55,10 @@ type gqlResponseEnvelope struct {
 }
 
 func (c *Client) request(ctx context.Context, gql string, variables map[string]any, dst any) error {
+	if c.token == "" {
+		return fmt.Errorf("anilist: no token configured")
+	}
+
 	reqBody := gqlRequest{
 		Query:     gql,
 		Variables: variables,
@@ -64,21 +77,38 @@ func (c *Client) request(ctx context.Context, gql string, variables map[string]a
 	}
 
 	reqBytes := append([]byte(nil), buf.Bytes()...)
+
 	var respBody []byte
+	var statusCode int
+	var err error
 
 	for attempt := range 4 {
-		resp, err := httpclient.Request(ctx, "POST", GraphQLAPI, headers, bytes.NewReader(reqBytes))
+		var resp *http.Response
+		resp, err = httpclient.Request(ctx, "POST", GraphQLAPI, headers, bytes.NewReader(reqBytes))
 		if err != nil {
 			return fmt.Errorf("anilist: request failed: %w", err)
 		}
 
-		respBody, err = io.ReadAll(resp.Body)
-		resp.Body.Close()
+		respBody, err = io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			return fmt.Errorf("anilist: close response body: %w", closeErr)
+		}
 		if err != nil {
 			return fmt.Errorf("anilist: read response: %w", err)
 		}
+		if len(respBody) == 10*1024*1024 {
+			return fmt.Errorf("anilist: response too large")
+		}
 
-		if resp.StatusCode == 429 || isRateLimitError(respBody) {
+		statusCode = resp.StatusCode
+
+		if len(respBody) == 0 {
+			return fmt.Errorf("anilist: empty response body (status=%d)", statusCode)
+		}
+
+		logger.Log.Debug("anilist response", "status", statusCode, "body_len", len(respBody), "body_first_200", string(respBody[:min(200, len(respBody))]))
+
+		if statusCode == 429 || isRateLimitError(respBody) {
 			if attempt == 3 {
 				break
 			}
@@ -102,7 +132,7 @@ func (c *Client) request(ctx context.Context, gql string, variables map[string]a
 	}
 
 	if err := json.Unmarshal(respBody, dst); err != nil {
-		return fmt.Errorf("anilist: unmarshal response: %w", err)
+		return fmt.Errorf("anilist: unmarshal response: %w (status=%d, body: %.500s)", err, statusCode, string(respBody))
 	}
 
 	if err := checkGraphQLErrors(respBody, dst); err != nil {

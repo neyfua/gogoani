@@ -154,7 +154,9 @@ func playEpisodes(cfg *config.Config, aa *provider.AllAnime, pl *player.Player, 
 
 		// Show menu immediately while mpv plays
 		action, err := showEpisodeMenu(episodes, episodeIdx)
-		pl.Stop() // kill mpv regardless of action
+		if stopErr := pl.Stop(); stopErr != nil {
+			logger.Log.Warn("player stop", "error", stopErr)
+		}
 
 		watchedEp := episode.Number
 
@@ -249,10 +251,10 @@ func buildMenuOptions(episodes []scraper.Episode, currentIdx int) []menuOption {
 	}
 }
 
+//nolint:gosec // G204: fzf subprocess with controlled input (no user data in args)
 func fzfSelectMenu(items []menuOption, currentEpisode scraper.Episode, totalEpisodes int, prompt string) (menuOption, error) {
-	info := fmt.Sprintf("\033[1;36mNow Playing: Episode %d/%d\033[0m", currentEpisode.Number, totalEpisodes)
 	cmd := exec.Command("fzf", "--ansi", "--prompt", prompt,
-		"--preview", "echo '"+info+"'",
+		"--preview", fmt.Sprintf("echo '\033[1;36mNow Playing: Episode %d/%d\033[0m'", currentEpisode.Number, totalEpisodes),
 		"--preview-window", "down:1:nohidden,noborder,noinfo",
 	)
 
@@ -342,6 +344,7 @@ func promptInput(prompt string) (string, error) {
 	return strings.TrimSpace(scanner.Text()), nil
 }
 
+//nolint:gosec // G204: fzf subprocess with controlled input (no user data in args)
 func fzfSelect[T fmt.Stringer](items []T, prompt string) (T, error) {
 	cmd := exec.Command("fzf", "--prompt", prompt, "--bind", "shift-up:page-up,shift-down:page-down")
 

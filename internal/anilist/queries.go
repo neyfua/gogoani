@@ -2,15 +2,14 @@ package anilist
 
 import (
 	"context"
-	"sort"
+	"slices"
+	"strings"
 )
-
 
 type Viewer struct {
 	ID   int
 	Name string
 }
-
 
 func (c *Client) Viewer(ctx context.Context) (*Viewer, error) {
 	query := `query {
@@ -33,7 +32,6 @@ func (c *Client) Viewer(ctx context.Context) (*Viewer, error) {
 		Name: resp.Data.Viewer.Name,
 	}, nil
 }
-
 
 func (c *Client) SearchMedia(ctx context.Context, search string) ([]AnimeEntry, error) {
 	query := `query ($search: String!) {
@@ -82,7 +80,6 @@ func (c *Client) SearchMedia(ctx context.Context, search string) ([]AnimeEntry, 
 	return entries, nil
 }
 
-
 func (c *Client) FetchList(ctx context.Context) ([]AnimeEntry, error) {
 	viewer, err := c.Viewer(ctx)
 	if err != nil {
@@ -90,7 +87,6 @@ func (c *Client) FetchList(ctx context.Context) ([]AnimeEntry, error) {
 	}
 	return c.FetchListByUserID(ctx, viewer.ID)
 }
-
 
 func (c *Client) FetchListByUserID(ctx context.Context, userID int) ([]AnimeEntry, error) {
 	query := `query ($userId: Int!) {
@@ -151,15 +147,14 @@ func (c *Client) FetchListByUserID(ctx context.Context, userID int) ([]AnimeEntr
 		}
 	}
 
-	sort.Slice(entries, func(i, j int) bool {
-		if entries[i].Status != entries[j].Status {
-			return entries[i].Status.Label() < entries[j].Status.Label()
+	slices.SortFunc(entries, func(a, b AnimeEntry) int {
+		if a.Status != b.Status {
+			return strings.Compare(a.Status.Label(), b.Status.Label())
 		}
-		return entries[i].Title < entries[j].Title
+		return strings.Compare(a.Title, b.Title)
 	})
 	return entries, nil
 }
-
 
 func (c *Client) SyncList(ctx context.Context) ([]AnimeEntry, error) {
 	entries, err := c.FetchList(ctx)

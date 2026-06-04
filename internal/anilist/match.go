@@ -1,6 +1,7 @@
 package anilist
 
 import (
+	"slices"
 	"strings"
 )
 
@@ -81,17 +82,11 @@ func matchScore(a, b string) int {
 	}
 	matchCount := 0
 	for _, wa := range aw {
-		for _, wb := range bw {
-			if wa == wb {
-				matchCount++
-				break
-			}
+		if slices.Contains(bw, wa) {
+			matchCount++
 		}
 	}
-	minLen := len(aw)
-	if len(bw) < minLen {
-		minLen = len(bw)
-	}
+	minLen := min(len(bw), len(aw))
 	if minLen == 0 {
 		return 0
 	}

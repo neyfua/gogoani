@@ -1,11 +1,13 @@
 package provider
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/url"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -105,9 +107,8 @@ func (a *AllAnime) Search(query string) ([]scraper.Anime, error) {
 		"query": searchGQL,
 	}
 
-	buf := httpclient.GetBuf()
-	defer httpclient.PutBuf(buf)
-	if err := json.NewEncoder(buf).Encode(payload); err != nil {
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(payload); err != nil {
 		logger.Log.Error("failed to marshal search payload", "error", err)
 		return nil, err
 	}
@@ -118,7 +119,7 @@ func (a *AllAnime) Search(query string) ([]scraper.Anime, error) {
 		"Referer":      AllAnimeRef,
 	}
 
-	resp, err := httpclient.Request(ctx, "POST", AllAnimeAPI, headers, buf)
+	resp, err := httpclient.Request(ctx, "POST", AllAnimeAPI, headers, bytes.NewReader(buf.Bytes()))
 	if err != nil {
 		logger.Log.Error("search request failed", "error", err)
 		return nil, err
@@ -131,7 +132,7 @@ func (a *AllAnime) Search(query string) ([]scraper.Anime, error) {
 	}
 
 	var gqlResp gqlResponse
-	if err := json.NewDecoder(resp.Body).Decode(&gqlResp); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 10*1024*1024)).Decode(&gqlResp); err != nil {
 		logger.Log.Error("failed to decode search response", "error", err)
 		return nil, err
 	}
@@ -185,7 +186,7 @@ func (a *AllAnime) Episodes(anime scraper.Anime, mode string) ([]scraper.Episode
 		"Referer":      AllAnimeRef,
 	}
 
-	resp, err := httpclient.Request(ctx, "POST", AllAnimeAPI, headers, buf)
+	resp, err := httpclient.Request(ctx, "POST", AllAnimeAPI, headers, bytes.NewReader(buf.Bytes()))
 	if err != nil {
 		logger.Log.Error("episodes request failed", "error", err)
 		return nil, err
@@ -198,7 +199,7 @@ func (a *AllAnime) Episodes(anime scraper.Anime, mode string) ([]scraper.Episode
 	}
 
 	var gqlResp gqlResponse
-	if err := json.NewDecoder(resp.Body).Decode(&gqlResp); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 10*1024*1024)).Decode(&gqlResp); err != nil {
 		logger.Log.Error("failed to decode episodes response", "error", err)
 		return nil, err
 	}
@@ -242,16 +243,34 @@ func (a *AllAnime) StreamURL(anime scraper.Anime, episode scraper.Episode) (stri
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	vars := fmt.Sprintf(`{"showId":"%s","translationType":"%s","episodeString":"%d"}`, anime.ID, episode.Mode, episode.Number)
-	exts := `{"persistedQuery":{"version":1,"sha256Hash":"d405d0edd690624b66baba3068e0edc3ac90f1597d898a1ec8db4e5c43c00fec"}}`
+	vars := map[string]any{
+		"showId":          anime.ID,
+		"translationType": episode.Mode,
+		"episodeString":   strconv.Itoa(episode.Number),
+	}
+	varsJSON, err := json.Marshal(vars)
+	if err != nil {
+		return "", "", err
+	}
+
+	exts := map[string]any{
+		"persistedQuery": map[string]any{
+			"version":    1,
+			"sha256Hash": "d405d0edd690624b66baba3068e0edc3ac90f1597d898a1ec8db4e5c43c00fec",
+		},
+	}
+	extsJSON, err := json.Marshal(exts)
+	if err != nil {
+		return "", "", err
+	}
 
 	u, err := url.Parse(AllAnimeAPI)
 	if err != nil {
 		return "", "", err
 	}
 	q := u.Query()
-	q.Set("variables", vars)
-	q.Set("extensions", exts)
+	q.Set("variables", string(varsJSON))
+	q.Set("extensions", string(extsJSON))
 	u.RawQuery = q.Encode()
 
 	headers := map[string]string{
@@ -272,7 +291,7 @@ func (a *AllAnime) StreamURL(anime scraper.Anime, episode scraper.Episode) (stri
 	}
 
 	var gqlResp gqlResponse
-	if err := json.NewDecoder(resp.Body).Decode(&gqlResp); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 10*1024*1024)).Decode(&gqlResp); err != nil {
 		logger.Log.Error("failed to decode stream response", "error", err)
 		return "", "", err
 	}
@@ -286,8 +305,12 @@ func (a *AllAnime) StreamURL(anime scraper.Anime, episode scraper.Episode) (stri
 	}
 
 	// Sort sources by priority descending (highest priority first)
-	sort.Slice(gqlResp.Data.Episode.SourceURLs, func(i, j int) bool {
-		return gqlResp.Data.Episode.SourceURLs[i].Priority > gqlResp.Data.Episode.SourceURLs[j].Priority
+	slices.SortFunc(gqlResp.Data.Episode.SourceURLs, func(a, b struct {
+		SourceName string  `json:"sourceName"`
+		SourceURL  string  `json:"sourceUrl"`
+		Priority   float64 `json:"priority"`
+	}) int {
+		return slices.Compare([]float64{b.Priority}, []float64{a.Priority})
 	})
 
 	var sourceURL string
