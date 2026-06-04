@@ -158,18 +158,18 @@ func playEpisodes(cfg *config.Config, aa *provider.AllAnime, pl *player.Player, 
 			logger.Log.Warn("player stop", "error", stopErr)
 		}
 
-		watchedEp := episode.Number
-
-		// Sync the episode that was just watched (skip only if we replayed)
-		if cfg.AutoSync && action != "replay" {
-			syncAniList(cfg, anime.Title, watchedEp)
-		}
-
 		if err != nil {
 			if strings.Contains(err.Error(), "selection cancelled") {
 				return nil // silent exit on user cancellation
 			}
 			return err
+		}
+
+		watchedEp := episode.Number
+
+		// Sync the episode that was just watched (skip only if we replayed)
+		if cfg.AutoSync && action != "replay" {
+			syncAniList(cfg, anime.Title, watchedEp)
 		}
 
 		switch action {

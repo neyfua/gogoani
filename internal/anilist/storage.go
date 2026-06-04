@@ -176,6 +176,9 @@ func writeJSON(path string, v any) error {
 }
 
 func readJSON(path string, v any) error {
+	if fi, err := os.Lstat(path); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("anilist: refusing to read through symlink")
+	}
 	data, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
 		return fmt.Errorf("anilist: read file %s: %w", path, err)

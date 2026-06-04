@@ -2,7 +2,10 @@ package player
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -14,7 +17,26 @@ type Player struct {
 }
 
 func New(bin string) *Player {
+	bin = resolvePlayer(bin)
 	return &Player{Bin: bin}
+}
+
+func resolvePlayer(bin string) string {
+	if bin == "" {
+		return "mpv"
+	}
+	if strings.Contains(bin, string(filepath.Separator)) {
+		fi, err := os.Stat(bin)
+		if err != nil || fi.IsDir() || fi.Mode()&0o111 == 0 {
+			return "mpv"
+		}
+		return bin
+	}
+	path, err := exec.LookPath(bin)
+	if err != nil {
+		return "mpv"
+	}
+	return path
 }
 
 // Play opens the given URL in the media player with optional extra arguments.
