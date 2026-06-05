@@ -7,6 +7,7 @@
 - You are **not** obligated to use `gogoani`, you can use others such as [ani-cli](https://github.com/pystardust/ani-cli), [GoAnime](https://github.com/alvarorichard/GoAnime) or any other TUI tools, and as I said this is just a project for personal use so if you plan on creating an Issue just to shame me then sybau ✌️
 - Is LeBron goated? Yes
 - 67
+- Knicks or Spurs are gonna win the 2026 NBA Playoffs? I love Wemby but... KNICKS IN 4!!
 
 ## Features
 
