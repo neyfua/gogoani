@@ -243,6 +243,9 @@ func (a *AllAnime) Episodes(anime scraper.Anime, mode string) ([]scraper.Episode
 		})
 	}
 
+	// Reverse episodes to get ascending order (API returns descending)
+	slices.Reverse(episodes)
+
 	a.mu.Lock()
 	a.cache[cacheKey] = episodes
 	a.mu.Unlock()
