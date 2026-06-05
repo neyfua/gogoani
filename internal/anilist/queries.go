@@ -70,11 +70,13 @@ func (c *Client) SearchMedia(ctx context.Context, search string) ([]AnimeEntry, 
 			total = *media.Episodes
 		}
 		entries = append(entries, AnimeEntry{
-			MediaID:  media.ID,
-			Title:    title,
-			TotalEps: total,
-			Format:   media.Format,
-			CoverURL: media.CoverImage.Medium,
+			MediaID:     media.ID,
+			Title:       title,
+			TitleRomaji: media.Title.Romaji,
+			TitleNative: media.Title.Native,
+			TotalEps:    total,
+			Format:      media.Format,
+			CoverURL:    media.CoverImage.Medium,
 		})
 	}
 	return entries, nil
@@ -137,6 +139,8 @@ func (c *Client) FetchListByUserID(ctx context.Context, userID int) ([]AnimeEntr
 				ListEntryID: entry.ID,
 				MediaID:     entry.Media.ID,
 				Title:       title,
+				TitleRomaji: entry.Media.Title.Romaji,
+				TitleNative: entry.Media.Title.Native,
 				Status:      MediaListStatus(entry.Status),
 				Progress:    entry.Progress,
 				TotalEps:    total,

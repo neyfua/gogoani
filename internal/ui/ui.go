@@ -46,16 +46,21 @@ func PlayAnimeByTitle(cfg *config.Config, title string, mode string) error {
 				break
 			}
 		}
-		// Try substring match (e.g. AllAnime "86" matches AniList "86 EIGHTY-SIX")
+		// Score candidates and pick best match
 		if !found {
 			titleLower := strings.ToLower(title)
-			for _, a := range animes {
+			var bestScore int
+			bestIdx := -1
+			for i, a := range animes {
 				aLower := strings.ToLower(a.Title)
-				if strings.Contains(titleLower, aLower) || strings.Contains(aLower, titleLower) {
-					anime = a
-					found = true
-					break
+				if score := matchScore(titleLower, aLower); score > bestScore {
+					bestScore = score
+					bestIdx = i
 				}
+			}
+			if bestScore >= 50 {
+				anime = animes[bestIdx]
+				found = true
 			}
 		}
 	}
@@ -191,6 +196,41 @@ func playEpisodes(cfg *config.Config, aa *provider.AllAnime, pl *player.Player, 
 			return nil
 		}
 	}
+}
+
+func matchScore(query, candidate string) int {
+	if query == candidate {
+		return 100
+	}
+
+	query = strings.ReplaceAll(query, "-", " ")
+	candidate = strings.ReplaceAll(candidate, "-", " ")
+
+	qWords := strings.Fields(query)
+	cWords := strings.Fields(candidate)
+
+	if len(qWords) == 0 || len(cWords) == 0 {
+		return 0
+	}
+
+	matchCount := 0
+	for _, cw := range cWords {
+		for _, qw := range qWords {
+			if cw == qw {
+				matchCount++
+				break
+			}
+		}
+	}
+
+	if matchCount == 0 {
+		return 0
+	}
+
+	// Percent of query words matched + percent of candidate words matched
+	// This rewards specific matches (high candidate word overlap) while
+	// penalizing short/generic candidates (low query word coverage)
+	return (matchCount*100)/len(qWords) + (matchCount*100)/len(cWords)
 }
 
 func selectAnime(animes []scraper.Anime, prompt string) (scraper.Anime, error) {
@@ -421,11 +461,33 @@ func syncAniList(cfg *config.Config, title string, episodeNum int) {
 		logger.Log.Debug("anilist: no cached list, skipping sync", "error", err)
 		return
 	}
-	entry := anilist.MatchEntry(entries, title)
+
+	logger.Log.Debug("anilist: matching candidates",
+		"title", title,
+		"episode", episodeNum,
+		"entries", len(entries),
+	)
+	for _, e := range entries {
+		logger.Log.Debug("anilist: candidate",
+			"list_title", e.Title,
+			"list_romaji", e.TitleRomaji,
+			"list_native", e.TitleNative,
+			"list_progress", e.Progress,
+			"list_status", e.Status,
+		)
+	}
+
+	entry := anilist.MatchEntryWithProgress(entries, title, episodeNum)
 	if entry == nil {
 		logger.Log.Debug("anilist: no matching entry found", "title", title)
 		return
 	}
+
+	logger.Log.Debug("anilist: matched entry",
+		"title", entry.Title,
+		"progress", entry.Progress,
+		"media_id", entry.MediaID,
+	)
 
 	if episodeNum == entry.Progress {
 		logger.Log.Debug("anilist: episode already synced, skipping", "title", entry.Title, "episode", episodeNum)

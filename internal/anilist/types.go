@@ -160,12 +160,29 @@ type AnimeEntry struct {
 	ListEntryID int             `json:"listEntryId"`
 	MediaID     int             `json:"mediaId"`
 	Title       string          `json:"title"`
+	TitleRomaji string          `json:"titleRomaji"`
+	TitleNative string          `json:"titleNative"`
 	Status      MediaListStatus `json:"status"`
 	Progress    int             `json:"progress"`
 	TotalEps    int             `json:"totalEps"`
 	Score       float64         `json:"score"`
 	Format      string          `json:"format"`
 	CoverURL    string          `json:"coverUrl"`
+}
+
+func (e AnimeEntry) Titles() []string {
+	titles := []string{e.Title, e.TitleRomaji, e.TitleNative}
+	seen := make(map[string]struct{}, len(titles))
+	uniq := make([]string, 0, len(titles))
+	for _, t := range titles {
+		if t != "" {
+			if _, ok := seen[t]; !ok {
+				seen[t] = struct{}{}
+				uniq = append(uniq, t)
+			}
+		}
+	}
+	return uniq
 }
 
 func (e AnimeEntry) TitleDisplay() string {
