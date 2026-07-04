@@ -315,7 +315,12 @@ func (a *AllAnime) StreamURL(anime scraper.Anime, episode scraper.Episode) (stri
 	}
 
 	if len(gqlResp.Data.Episode.SourceURLs) == 0 {
-		logger.Log.Error("no sources found", "anime_id", anime.ID, "episode", episode.Number)
+		raw, _ := json.Marshal(gqlResp.Data)
+		logger.Log.Error("no sources found",
+			"anime_id", anime.ID,
+			"episode", episode.Number,
+			"data", string(raw),
+		)
 		return "", "", fmt.Errorf("no sources available")
 	}
 
