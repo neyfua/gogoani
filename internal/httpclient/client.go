@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"net/http/cookiejar"
 	"sync"
 	"time"
 
@@ -20,9 +21,12 @@ var transport = &http.Transport{
 	ForceAttemptHTTP2:   true,
 }
 
+var jar, _ = cookiejar.New(nil)
+
 var Client = &http.Client{
 	Timeout:   15 * time.Second,
 	Transport: transport,
+	Jar:       jar,
 }
 
 const UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:150.0) Gecko/20100101 Firefox/150.0"
