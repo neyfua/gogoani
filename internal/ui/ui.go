@@ -21,7 +21,7 @@ import (
 // PlayAnimeByTitle searches for an anime by title and starts the episode playback flow,
 // bypassing the anime selection step if there's an exact title match or only one result.
 func PlayAnimeByTitle(cfg *config.Config, title string, mode string) error {
-	aa := provider.NewAllAnime()
+	aa := provider.NewAniDB()
 	pl := player.New(cfg.Player)
 
 	animes, err := aa.Search(title)
@@ -76,7 +76,7 @@ func PlayAnimeByTitle(cfg *config.Config, title string, mode string) error {
 }
 
 func Run(cfg *config.Config, query string, mode string) error {
-	aa := provider.NewAllAnime()
+	aa := provider.NewAniDB()
 	pl := player.New(cfg.Player)
 
 	for {
@@ -111,7 +111,7 @@ func Run(cfg *config.Config, query string, mode string) error {
 	}
 }
 
-func playEpisodes(cfg *config.Config, aa *provider.AllAnime, pl *player.Player, anime scraper.Anime, mode string) error {
+func playEpisodes(cfg *config.Config, aa scraper.Provider, pl *player.Player, anime scraper.Anime, mode string) error {
 	logger.Log.Debug("fetching episodes", "anime", anime.Title, "mode", mode)
 	episodes, err := aa.Episodes(anime, mode)
 	if err != nil {
@@ -179,9 +179,13 @@ func playEpisodes(cfg *config.Config, aa *provider.AllAnime, pl *player.Player, 
 
 		switch action {
 		case "prev":
-			episodeIdx--
+			if episodeIdx > 0 {
+				episodeIdx--
+			}
 		case "next":
-			episodeIdx++
+			if episodeIdx < len(episodes)-1 {
+				episodeIdx++
+			}
 		case "replay":
 			// same index, continue
 		case "select":
@@ -269,13 +273,16 @@ func showEpisodeMenu(episodes []scraper.Episode, currentIdx int) (string, error)
 		return "", fmt.Errorf("episode index %d out of bounds", currentIdx)
 	}
 	opts := buildMenuOptions(episodes, currentIdx)
+	var enabledOpts []menuOption
+	for _, o := range opts {
+		if o.enabled {
+			enabledOpts = append(enabledOpts, o)
+		}
+	}
 	currentEpisode := episodes[currentIdx]
-	selected, err := fzfSelectMenu(opts, currentEpisode, len(episodes), "What next? ")
+	selected, err := fzfSelectMenu(enabledOpts, currentEpisode, len(episodes), "What next? ")
 	if err != nil {
 		return "", err
-	}
-	if !selected.enabled {
-		return "", fmt.Errorf("option not available")
 	}
 	return selected.action, nil
 }
