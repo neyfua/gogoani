@@ -9,6 +9,7 @@ import (
 
 type Config struct {
 	Player   string // media player binary
+	Detach   bool   // detach player from the terminal (safe inside tmux)
 	AniList  AniListConfig
 	AutoSync bool // Enable AniList auto-sync after watching
 }
@@ -27,9 +28,16 @@ func Load() *Config {
 	}
 	return &Config{
 		Player:   player,
+		Detach:   detach(),
 		AutoSync: token != "",
 		AniList: AniListConfig{
 			Token: token,
 		},
 	}
+}
+
+// detach defaults to true (detach player from the terminal) unless
+// the user opts out via GOGOANI_NO_DETACH=1.
+func detach() bool {
+	return os.Getenv("GOGOANI_NO_DETACH") == ""
 }

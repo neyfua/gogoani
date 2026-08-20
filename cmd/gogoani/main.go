@@ -20,6 +20,7 @@ func main() {
 	flag.BoolVar(&dubFlag, "d", false, "play dubbed version")
 	flag.BoolVar(&dubFlag, "dub", false, "play dubbed version")
 	debugFlag := flag.Bool("debug", false, "enable debug logging")
+	noDetachFlag := flag.Bool("no-detach", false, "keep player attached to the terminal (default: detach)")
 
 	flag.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(), "Usage: gogoani [option]\n")
@@ -28,6 +29,7 @@ func main() {
 		fmt.Fprintf(flag.CommandLine.Output(), "Options:\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "  -d, --dub       play dubbed version\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "  --debug         enable debug logging\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "  --no-detach     keep player attached to the terminal\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "  -h, --help      print out help commands\n\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "AniList options:\n")
 		fmt.Fprintf(flag.CommandLine.Output(), "  --auth          authenticate with AniList\n")
@@ -44,7 +46,7 @@ func main() {
 
 	args := flag.Args()
 	if len(args) > 0 && args[0] == "anilist" {
-		if err := runAniList(args[1:]); err != nil {
+		if err := runAniList(args[1:], !*noDetachFlag); err != nil {
 			fmt.Fprintln(os.Stderr, "Error:", err)
 			os.Exit(1)
 		}
@@ -53,6 +55,7 @@ func main() {
 
 	query := strings.Join(args, " ")
 	cfg := config.Load()
+	cfg.Detach = !*noDetachFlag
 
 	logger.Log.Debug("starting gogoani", "query", query, "player", cfg.Player)
 
@@ -68,7 +71,7 @@ func main() {
 	}
 }
 
-func runAniList(args []string) error {
+func runAniList(args []string, detach bool) error {
 	// Manually handle --status so it works with or without a filter value
 	var statusFilter string
 	var statusSeen bool
@@ -172,6 +175,7 @@ func runAniList(args []string) error {
 			return err
 		}
 		cfg := config.Load()
+		cfg.Detach = detach
 		return anilist.ShowStatusList(entries, statusFilter, func(title string) error {
 			return ui.PlayAnimeByTitle(cfg, title, "sub")
 		})

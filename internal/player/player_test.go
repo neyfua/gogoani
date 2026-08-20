@@ -38,7 +38,7 @@ func TestPlayNoBin(t *testing.T) {
 
 func TestStartNoBin(t *testing.T) {
 	p := &Player{Bin: ""}
-	err := p.Start("http://example.com/video")
+	err := p.Start("http://example.com/video", "", "")
 	if err == nil {
 		t.Errorf("Start() with empty Bin should return error")
 	}
@@ -49,5 +49,13 @@ func TestStopNoCmd(t *testing.T) {
 	err := p.Stop()
 	if err != nil {
 		t.Errorf("Stop() with no running command should return nil, got %v", err)
+	}
+}
+
+func TestNewLauncherDesktop(t *testing.T) {
+	// On desktop Linux, NewLauncher("sh") returns a *Player (not AndroidLauncher).
+	launcher := NewLauncher("sh", true)
+	if _, ok := launcher.(*Player); !ok {
+		t.Errorf("NewLauncher(\"sh\") returned %T, want *Player", launcher)
 	}
 }

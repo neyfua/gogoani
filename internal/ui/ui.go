@@ -22,7 +22,7 @@ import (
 // bypassing the anime selection step if there's an exact title match or only one result.
 func PlayAnimeByTitle(cfg *config.Config, title string, mode string) error {
 	aa := provider.NewAniDB()
-	pl := player.New(cfg.Player)
+	pl := player.NewLauncher(cfg.Player, cfg.Detach)
 
 	animes, err := aa.Search(title)
 	if err != nil {
@@ -77,7 +77,7 @@ func PlayAnimeByTitle(cfg *config.Config, title string, mode string) error {
 
 func Run(cfg *config.Config, query string, mode string) error {
 	aa := provider.NewAniDB()
-	pl := player.New(cfg.Player)
+	pl := player.NewLauncher(cfg.Player, cfg.Detach)
 
 	for {
 		if query == "" {
@@ -111,7 +111,7 @@ func Run(cfg *config.Config, query string, mode string) error {
 	}
 }
 
-func playEpisodes(cfg *config.Config, aa scraper.Provider, pl *player.Player, anime scraper.Anime, mode string) error {
+func playEpisodes(cfg *config.Config, aa scraper.Provider, pl player.Launcher, anime scraper.Anime, mode string) error {
 	logger.Log.Debug("fetching episodes", "anime", anime.Title, "mode", mode)
 	episodes, err := aa.Episodes(anime, mode)
 	if err != nil {
@@ -146,15 +146,10 @@ func playEpisodes(cfg *config.Config, aa scraper.Provider, pl *player.Player, an
 			return fmt.Errorf("no stream URL available for %s episode %d", anime.Title, episode.Number)
 		}
 
-		logger.Log.Debug("playing", "url", url, "referer", referer)
-		if referer != "" {
-			if err := pl.Start(url, "--referrer="+referer); err != nil {
-				return err
-			}
-		} else {
-			if err := pl.Start(url); err != nil {
-				return err
-			}
+		title := fmt.Sprintf("%s Episode %d", anime.Title, episode.Number)
+		logger.Log.Debug("playing", "url", url, "referer", referer, "title", title)
+		if err := pl.Start(url, referer, title); err != nil {
+			return err
 		}
 
 		// Show menu immediately while mpv plays
