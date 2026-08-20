@@ -38,6 +38,14 @@ func detectAndroid() bool {
 	if data, err := os.ReadFile("/proc/version"); err == nil {
 		return androidFromProcVersion(data)
 	}
+	// Android exposes /system/build.prop; a desktop Linux box does not.
+	if _, err := os.Stat("/system/build.prop"); err == nil {
+		return true
+	}
+	// Match ani-cli's uname check (`*ndroid*`).
+	if out, err := exec.Command("uname", "-a").Output(); err == nil {
+		return strings.Contains(string(out), "ndroid")
+	}
 	return false
 }
 

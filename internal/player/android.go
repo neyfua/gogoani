@@ -14,8 +14,7 @@ const (
 )
 
 // AndroidLauncher launches video via the Android activity manager.
-// It fires-and-forgets an `am start` intent matching exactly what ani-cli
-// does (no extra flags, no blocking wait, no force-stop before launch).
+// It matches ani-cli's fire-and-forget `am start` behavior exactly.
 type AndroidLauncher struct {
 	activity string
 	pkg      string
@@ -38,10 +37,15 @@ func (a *AndroidLauncher) Media() string {
 }
 
 // Start sends an am start intent and returns immediately without waiting for
-// the activity to fully render. This matches ani-cli's `nohup am start ... &`
-// approach: the intent is fire-and-forget so the activity manager can bring
-// mpv to the foreground without blocking gogoani's terminal.
+// the activity to fully render. A leftover mpv instance that is stuck in
+// background playback is force-stopped first (also non-blocking) so the new
+// intent opens a fresh foreground window instead of being appended and hidden.
 func (a *AndroidLauncher) Start(url, referer, title string) error {
+	if err := a.hasAm(); err != nil {
+		return err
+	}
+	a.forceStopAsync()
+
 	args := []string{
 		"start", "--user", "0",
 		"-a", "android.intent.action.VIEW",
@@ -59,22 +63,44 @@ func (a *AndroidLauncher) Start(url, referer, title string) error {
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("player: am start: %w", err)
 	}
-	// Detach: don't wait for am to finish. The process will exit on its own
-	// after sending the intent. Releasing avoids a zombie without blocking.
 	_ = cmd.Process.Release()
 	return nil
 }
 
 // Stop kills any running mpv instance via am force-stop. Best effort.
 func (a *AndroidLauncher) Stop() error {
+	if _, err := exec.LookPath("am"); err != nil {
+		return nil
+	}
+	logger.Log.Debug("player: am force-stop", "pkg", a.pkg)
 	//nolint:gosec // G204: package is a fixed constant
 	cmd := exec.Command("am", "force-stop", a.pkg)
 	cmd.Stdin = nil
 	cmd.Stdout = nil
 	cmd.Stderr = nil
 	if err := cmd.Run(); err != nil {
-		logger.Log.Debug("player: am force-stop failed", "error", err)
 		return fmt.Errorf("player: am force-stop: %w", err)
 	}
 	return nil
+}
+
+func (a *AndroidLauncher) hasAm() error {
+	if _, err := exec.LookPath("am"); err != nil {
+		return fmt.Errorf("player: Android app launch needs the `am` command, but it's not in PATH. On Termux run: pkg install termux-am")
+	}
+	return nil
+}
+
+// forceStopAsync force-stops the player app without waiting for it to finish.
+func (a *AndroidLauncher) forceStopAsync() {
+	//nolint:gosec // G204: package is a fixed constant
+	cmd := exec.Command("am", "force-stop", a.pkg)
+	cmd.Stdin = nil
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+	if err := cmd.Start(); err != nil {
+		logger.Log.Debug("player: am force-stop start failed", "error", err)
+		return
+	}
+	_ = cmd.Process.Release()
 }
