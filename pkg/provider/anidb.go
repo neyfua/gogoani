@@ -251,12 +251,14 @@ func (a *AniDB) Episodes(anime scraper.Anime, mode string) ([]scraper.Episode, e
 	}
 
 	episodes := make([]scraper.Episode, 0, len(epResp.Episodes))
-	for i, ep := range epResp.Episodes {
+	n := 0
+	for _, ep := range epResp.Episodes {
 		if ep.Number <= 0 {
 			continue
 		}
+		n++
 		episodes = append(episodes, scraper.Episode{
-			Number: i + 1,
+			Number: n,
 			Title:  "",
 			Mode:   mode,
 		})
@@ -311,10 +313,16 @@ func (a *AniDB) StreamURL(anime scraper.Anime, episode scraper.Episode) (string,
 		return "", "", err
 	}
 
-	// Find the episode with matching number
+	// Find the episode matching the (possibly season-relative) number
+	// positionally, since anidb numbers can be absolute (e.g. ep 73-90).
 	var epID int
+	n := 0
 	for _, ep := range epResp.Episodes {
-		if ep.Number == episode.Number {
+		if ep.Number <= 0 {
+			continue
+		}
+		n++
+		if n == episode.Number {
 			epID = ep.ID
 			break
 		}
