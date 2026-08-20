@@ -29,6 +29,14 @@ func NewAndroidLauncher(bin string) *AndroidLauncher {
 	return &AndroidLauncher{activity: activity, pkg: pkg}
 }
 
+// Media returns the display name of the Android media app (mpv or vlc).
+func (a *AndroidLauncher) Media() string {
+	if strings.Contains(a.activity, "vlc") {
+		return "vlc"
+	}
+	return "mpv"
+}
+
 // Start sends an am start intent and returns immediately without waiting for
 // the activity to fully render. This matches ani-cli's `nohup am start ... &`
 // approach: the intent is fire-and-forget so the activity manager can bring

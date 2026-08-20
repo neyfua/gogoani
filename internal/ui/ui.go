@@ -18,11 +18,23 @@ import (
 	"github.com/neyfua/gogoani/pkg/provider"
 )
 
+// describePlayer prints which player/launcher gogoani will use, to stderr so it
+// doesn't corrupt fzf's stdout.
+func describePlayer(pl player.Launcher) {
+	switch launcher := pl.(type) {
+	case *player.AndroidLauncher:
+		fmt.Fprintf(os.Stderr, "▶ %s (Android app)\n", launcher.Media())
+	case *player.Player:
+		fmt.Fprintf(os.Stderr, "▶ %s\n", launcher.Bin)
+	}
+}
+
 // PlayAnimeByTitle searches for an anime by title and starts the episode playback flow,
 // bypassing the anime selection step if there's an exact title match or only one result.
 func PlayAnimeByTitle(cfg *config.Config, title string, mode string) error {
 	aa := provider.NewAniDB()
 	pl := player.NewLauncher(cfg.Player, cfg.Detach)
+	describePlayer(pl)
 
 	animes, err := aa.Search(title)
 	if err != nil {
@@ -78,6 +90,7 @@ func PlayAnimeByTitle(cfg *config.Config, title string, mode string) error {
 func Run(cfg *config.Config, query string, mode string) error {
 	aa := provider.NewAniDB()
 	pl := player.NewLauncher(cfg.Player, cfg.Detach)
+	describePlayer(pl)
 
 	for {
 		if query == "" {
