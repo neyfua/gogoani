@@ -27,7 +27,14 @@ func detectAndroid() bool {
 	if runtime.GOOS != "linux" {
 		return false
 	}
-	// Match ani-cli: uname contains "ndroid" (covers "android" and "ndroid")
+	// Termux sets PREFIX and TERMUX_VERSION.
+	if os.Getenv("PREFIX") != "" || os.Getenv("TERMUX_VERSION") != "" {
+		return true
+	}
+	// Android sets ANDROID_ROOT.
+	if os.Getenv("ANDROID_ROOT") != "" {
+		return true
+	}
 	if data, err := os.ReadFile("/proc/version"); err == nil {
 		return androidFromProcVersion(data)
 	}

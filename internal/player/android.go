@@ -1,9 +1,12 @@
 package player
 
 import (
+	"bytes"
 	"fmt"
 	"os/exec"
 	"strings"
+
+	"github.com/neyfua/gogoani/internal/logger"
 )
 
 // Android app component for mpv and vlc.
@@ -37,31 +40,33 @@ func NewAndroidLauncher(bin string) *AndroidLauncher {
 }
 
 // Start launches the URL in the Android player app. It returns immediately.
+// The app is force-stopped first so a stale background instance (with a
+// lingering background-playback task) cannot swallow the intent via
+// onNewIntent and moveTaskToBack, which would keep playing audio with no
+// visible player window.
 func (a *AndroidLauncher) Start(url, referer, title string) error {
-	// mpv-android parses the URL from intent data and the title from
-	// the "title" extra (see intent.html). video/any forces mpv to
-	// accept the URL regardless of its file extension.
-	//nolint:gosec // G204: am start with controlled args; url/title come from the scraper, not free user input
-	cmd := exec.Command("am", "start", "--user", "0",
+	a.forceStop()
+	args := []string{
+		"am", "start", "--user", "0",
 		"-a", "android.intent.action.VIEW",
 		"-d", url,
 		"-t", "video/any",
 		"-n", a.activity,
 		"-e", "title", title,
 		"-f", amForegroundFlags,
-	)
-	cmd.Stdin = nil
-	cmd.Stdout = nil
-	cmd.Stderr = nil
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("player: am start: %w", err)
 	}
-	err := cmd.Wait()
-	if err != nil {
-		// am start prints the launch result to stdout and exits 0 on
-		// success; a non-zero exit means the intent was rejected.
-		return fmt.Errorf("player: am start failed: %w", err)
+	logger.Log.Debug("player: launching android intent", "args", args)
+
+	var stdout, stderr bytes.Buffer
+	//nolint:gosec // G204: am start with controlled args; url/title come from the scraper, not free user input
+	cmd := exec.Command(args[0], args[1:]...)
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		logger.Log.Error("player: am start failed", "error", err, "stdout", stdout.String(), "stderr", stderr.String())
+		return fmt.Errorf("player: am start failed: %w (stderr: %s)", err, stderr.String())
 	}
+	logger.Log.Debug("player: am start succeeded", "stdout", stdout.String())
 	return nil
 }
 
@@ -69,16 +74,25 @@ func (a *AndroidLauncher) Start(url, referer, title string) error {
 // audio in the background when the user switches episodes or quits. Best
 // effort: if `am` is unavailable it returns nil.
 func (a *AndroidLauncher) Stop() error {
+	if err := a.forceStop(); err != nil {
+		return fmt.Errorf("player: am force-stop: %w", err)
+	}
+	return nil
+}
+
+func (a *AndroidLauncher) forceStop() error {
 	if _, err := exec.LookPath("am"); err != nil {
 		return nil
 	}
+	logger.Log.Debug("player: force-stopping app", "pkg", a.pkg)
 	//nolint:gosec // G204: package name is a fixed constant, not user input
 	cmd := exec.Command("am", "force-stop", a.pkg)
 	cmd.Stdin = nil
 	cmd.Stdout = nil
 	cmd.Stderr = nil
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("player: am force-stop: %w", err)
+		logger.Log.Debug("player: am force-stop failed", "error", err)
+		return err
 	}
 	return nil
 }

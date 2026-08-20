@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"github.com/neyfua/gogoani/internal/logger"
 )
 
 // Launcher starts a video player and can stop it. Implementations are the
@@ -34,19 +36,24 @@ func New(bin string) *Player {
 // otherwise it returns a terminal Player.
 func NewLauncher(bin string, detach bool) Launcher {
 	if isAndroidPreferred(bin) {
+		logger.Log.Debug("player: using Android am-start launcher", "bin", bin, "am", HasAmStart(), "android", IsAndroid())
 		return NewAndroidLauncher(bin)
 	}
 	p := New(bin)
 	p.Detach = detach
+	logger.Log.Debug("player: using terminal launcher", "bin", p.Bin, "detach", detach)
 	return p
 }
 
 // isAndroidPreferred reports whether the Android am-start launcher should be used.
+// A player named with "android" (e.g. GOGOANI_PLAYER=android_mpv), a Termux/
+// Android environment, or the presence of the `am` command are all decisive.
 func isAndroidPreferred(bin string) bool {
-	if strings.Contains(strings.ToLower(bin), "android") {
+	b := strings.ToLower(bin)
+	if strings.Contains(b, "android") || strings.Contains(b, "am") {
 		return true
 	}
-	return IsAndroid() && HasAmStart()
+	return IsAndroid() || HasAmStart()
 }
 
 func resolvePlayer(bin string) string {
