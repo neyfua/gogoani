@@ -23,7 +23,7 @@ jobs:
           cache: true
 
       - name: Build
-        run: go build -o gogoani ./...
+        run: go build -o gogoani ./cmd/gogoani
 
       - name: Upload to release
         env:
