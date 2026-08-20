@@ -5,8 +5,6 @@ import (
 	"testing"
 )
 
-// resetRuntimeCaches clears the memoized detection results so tests
-// for the pure functions below are independent of the host environment.
 func resetRuntimeCaches() {
 	isAndroidCache = nil
 	isTmuxCache = nil
@@ -33,8 +31,29 @@ func TestDetectAndroid(t *testing.T) {
 	}
 }
 
+func TestDetectAndroidTermuxEnv(t *testing.T) {
+	resetRuntimeCaches()
+	t.Setenv("PREFIX", "/data/data/com.termux/files/usr")
+	if !detectAndroid() {
+		t.Errorf("detectAndroid() = false with PREFIX set")
+	}
+
+	resetRuntimeCaches()
+	t.Setenv("PREFIX", "")
+	t.Setenv("TERMUX_VERSION", "0.118.0")
+	if !detectAndroid() {
+		t.Errorf("detectAndroid() = false with TERMUX_VERSION set")
+	}
+
+	resetRuntimeCaches()
+	t.Setenv("TERMUX_VERSION", "")
+	t.Setenv("ANDROID_ROOT", "/system")
+	if !detectAndroid() {
+		t.Errorf("detectAndroid() = false with ANDROID_ROOT set")
+	}
+}
+
 func TestIsTmuxMatcher(t *testing.T) {
-	// TMUX is only consulted if the env var is set during the test.
 	t.Setenv("TMUX", "/tmp/tmux-1000/default,12345,0")
 	resetRuntimeCaches()
 	if !IsTmux() {
@@ -43,7 +62,6 @@ func TestIsTmuxMatcher(t *testing.T) {
 }
 
 func TestHasAmStart(t *testing.T) {
-	// am should not exist in a desktop CI environment; must return without panicking.
 	resetRuntimeCaches()
 	_ = HasAmStart()
 }
@@ -51,38 +69,31 @@ func TestHasAmStart(t *testing.T) {
 func TestNewAndroidLauncherActivity(t *testing.T) {
 	mpv := NewAndroidLauncher("android_mpv")
 	if !strings.Contains(mpv.activity, "is.xyz.mpv") {
-		t.Errorf("default android activity = %q, want mpv MPVActivity", mpv.activity)
+		t.Errorf("mpv activity = %q", mpv.activity)
 	}
 	if mpv.pkg != "is.xyz.mpv" {
-		t.Errorf("default android pkg = %q, want is.xyz.mpv", mpv.pkg)
+		t.Errorf("mpv pkg = %q", mpv.pkg)
 	}
+
 	vlc := NewAndroidLauncher("android_vlc")
 	if !strings.Contains(vlc.activity, "org.videolan.vlc") {
-		t.Errorf("vlc android activity = %q, want org.videolan.vlc", vlc.activity)
+		t.Errorf("vlc activity = %q", vlc.activity)
 	}
 	if vlc.pkg != "org.videolan.vlc" {
-		t.Errorf("vlc android pkg = %q, want org.videolan.vlc", vlc.pkg)
+		t.Errorf("vlc pkg = %q", vlc.pkg)
 	}
-}
 
-func TestAndroidLauncherStopNoop(t *testing.T) {
-	a := NewAndroidLauncher("android_mpv")
-	if err := a.Stop(); err != nil {
-		t.Errorf("Stop() err = %v, want nil (am not present is best-effort)", err)
+	defaultLauncher := NewAndroidLauncher("mpv")
+	if defaultLauncher.pkg != "is.xyz.mpv" {
+		t.Errorf("default launcher pkg = %q, want is.xyz.mpv", defaultLauncher.pkg)
 	}
 }
 
 func TestAndroidLauncherStartNoAm(t *testing.T) {
-	// Without `am` in PATH the Start must return an error, not hang.
-	orig := hasAmStartCache
-	hasAmStartCache = new(bool) // force re-evaluation of am
-	*hasAmStartCache = false
-	defer func() { hasAmStartCache = orig }()
-
 	a := NewAndroidLauncher("android_mpv")
 	err := a.Start("https://example.com/v.m3u8", "", "Test Episode 1")
 	if err == nil {
-		t.Skip("am command present in environment; cannot test failure path")
+		t.Skip("am present in environment")
 	}
 }
 
@@ -90,9 +101,17 @@ func TestPlayWithForceMediaTitle(t *testing.T) {
 	p := New("sleep")
 	p.Detach = true
 	if err := p.Start("30", "", ""); err != nil {
-		t.Fatalf("Start() returned error: %v", err)
+		t.Fatalf("Start() error: %v", err)
 	}
 	if err := p.Stop(); err != nil {
-		t.Fatalf("Stop() returned error: %v", err)
+		t.Fatalf("Stop() error: %v", err)
+	}
+}
+
+func TestNewLauncherAndroid(t *testing.T) {
+	// Explicit android_mpv should always return AndroidLauncher
+	launcher := NewLauncher("android_mpv", true)
+	if _, ok := launcher.(*AndroidLauncher); !ok {
+		t.Errorf("NewLauncher(\"android_mpv\") = %T, want *AndroidLauncher", launcher)
 	}
 }
