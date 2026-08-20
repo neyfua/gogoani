@@ -53,16 +53,22 @@ func TestNewAndroidLauncherActivity(t *testing.T) {
 	if !strings.Contains(mpv.activity, "is.xyz.mpv") {
 		t.Errorf("default android activity = %q, want mpv MPVActivity", mpv.activity)
 	}
+	if mpv.pkg != "is.xyz.mpv" {
+		t.Errorf("default android pkg = %q, want is.xyz.mpv", mpv.pkg)
+	}
 	vlc := NewAndroidLauncher("android_vlc")
 	if !strings.Contains(vlc.activity, "org.videolan.vlc") {
 		t.Errorf("vlc android activity = %q, want org.videolan.vlc", vlc.activity)
+	}
+	if vlc.pkg != "org.videolan.vlc" {
+		t.Errorf("vlc android pkg = %q, want org.videolan.vlc", vlc.pkg)
 	}
 }
 
 func TestAndroidLauncherStopNoop(t *testing.T) {
 	a := NewAndroidLauncher("android_mpv")
 	if err := a.Stop(); err != nil {
-		t.Errorf("Stop() returned error: %v", err)
+		t.Errorf("Stop() err = %v, want nil (am not present is best-effort)", err)
 	}
 }
 

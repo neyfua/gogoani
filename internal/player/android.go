@@ -12,31 +12,43 @@ const (
 	vlcActivity = "org.videolan.vlc/org.videolan.vlc.gui.video.VideoPlayerActivity"
 )
 
+// am start flags: FLAG_ACTIVITY_NEW_TASK | FLAG_ACTIVITY_SINGLE_TOP |
+// FLAG_ACTIVITY_BROUGHT_TO_FRONT. These make mpv reuse its existing task and
+// bring the player to the foreground instead of appending to background playback.
+const amForegroundFlags = "0x34000000"
+
 // AndroidLauncher launches the video via the Android activity manager (am start)
 // instead of a terminal media player binary. This is the recommended launcher on
 // Android/Termux, matching ani-cli's android_mpv/android_vlc behavior.
 type AndroidLauncher struct {
 	activity string // e.g. "is.xyz.mpv/.MPVActivity"
+	pkg      string // e.g. "is.xyz.mpv"
 }
 
 // NewAndroidLauncher returns an AndroidLauncher for the given player binary name.
-// Defaults to mpv when bin doesn't identify vlc.
+// Defaults to mpv when bin doesn't identify vlc. The player is used through the
+// Android app (apk), not a terminal mpv binary.
 func NewAndroidLauncher(bin string) *AndroidLauncher {
-	activity := mpvActivity
+	activity, pkg := mpvActivity, "is.xyz.mpv"
 	if strings.Contains(strings.ToLower(bin), "vlc") {
-		activity = vlcActivity
+		activity, pkg = vlcActivity, "org.videolan.vlc"
 	}
-	return &AndroidLauncher{activity: activity}
+	return &AndroidLauncher{activity: activity, pkg: pkg}
 }
 
 // Start launches the URL in the Android player app. It returns immediately.
 func (a *AndroidLauncher) Start(url, referer, title string) error {
+	// mpv-android parses the URL from intent data and the title from
+	// the "title" extra (see intent.html). video/any forces mpv to
+	// accept the URL regardless of its file extension.
 	//nolint:gosec // G204: am start with controlled args; url/title come from the scraper, not free user input
 	cmd := exec.Command("am", "start", "--user", "0",
 		"-a", "android.intent.action.VIEW",
 		"-d", url,
+		"-t", "video/any",
 		"-n", a.activity,
 		"-e", "title", title,
+		"-f", amForegroundFlags,
 	)
 	cmd.Stdin = nil
 	cmd.Stdout = nil
@@ -44,10 +56,29 @@ func (a *AndroidLauncher) Start(url, referer, title string) error {
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("player: am start: %w", err)
 	}
-	return cmd.Process.Release()
+	err := cmd.Wait()
+	if err != nil {
+		// am start prints the launch result to stdout and exits 0 on
+		// success; a non-zero exit means the intent was rejected.
+		return fmt.Errorf("player: am start failed: %w", err)
+	}
+	return nil
 }
 
-// Stop is a no-op on Android: the player app manages its own window/process.
+// Stop force-stops the player app so a previous episode does not keep playing
+// audio in the background when the user switches episodes or quits. Best
+// effort: if `am` is unavailable it returns nil.
 func (a *AndroidLauncher) Stop() error {
+	if _, err := exec.LookPath("am"); err != nil {
+		return nil
+	}
+	//nolint:gosec // G204: package name is a fixed constant, not user input
+	cmd := exec.Command("am", "force-stop", a.pkg)
+	cmd.Stdin = nil
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("player: am force-stop: %w", err)
+	}
 	return nil
 }
