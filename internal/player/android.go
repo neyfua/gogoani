@@ -2,6 +2,7 @@ package player
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 
@@ -36,6 +37,22 @@ func (a *AndroidLauncher) Media() string {
 	return "mpv"
 }
 
+// amPath returns the am binary or "" if unavailable.
+func amPath() string {
+	if _, err := exec.LookPath("am"); err == nil {
+		return "am"
+	}
+	for _, p := range []string{"/system/bin/am", "$PREFIX/bin/am"} {
+		if strings.HasPrefix(p, "$") {
+			p = strings.Replace(p, "$PREFIX", os.Getenv("PREFIX"), 1)
+		}
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return ""
+}
+
 // Start sends an am start intent and returns immediately without waiting for
 // the activity to fully render. A leftover mpv instance that is stuck in
 // background playback is force-stopped first (also non-blocking) so the new
@@ -56,7 +73,7 @@ func (a *AndroidLauncher) Start(url, referer, title string) error {
 	logger.Log.Debug("player: am start", "args", args)
 
 	//nolint:gosec // G204: args are controlled; url/title come from the scraper
-	cmd := exec.Command("am", args...)
+	cmd := exec.Command(amPath(), args...)
 	cmd.Stdin = nil
 	cmd.Stdout = nil
 	cmd.Stderr = nil
@@ -69,12 +86,13 @@ func (a *AndroidLauncher) Start(url, referer, title string) error {
 
 // Stop kills any running mpv instance via am force-stop. Best effort.
 func (a *AndroidLauncher) Stop() error {
-	if _, err := exec.LookPath("am"); err != nil {
+	bin := amPath()
+	if bin == "" {
 		return nil
 	}
 	logger.Log.Debug("player: am force-stop", "pkg", a.pkg)
 	//nolint:gosec // G204: package is a fixed constant
-	cmd := exec.Command("am", "force-stop", a.pkg)
+	cmd := exec.Command(bin, "force-stop", a.pkg)
 	cmd.Stdin = nil
 	cmd.Stdout = nil
 	cmd.Stderr = nil
@@ -85,16 +103,20 @@ func (a *AndroidLauncher) Stop() error {
 }
 
 func (a *AndroidLauncher) hasAm() error {
-	if _, err := exec.LookPath("am"); err != nil {
-		return fmt.Errorf("player: Android app launch needs the `am` command, but it's not in PATH. On Termux run: pkg install termux-am")
+	if amPath() != "" {
+		return nil
 	}
-	return nil
+	return fmt.Errorf("player: Android app launch needs the `am` command, but it's not in PATH. On Termux run: pkg install termux-am")
 }
 
 // forceStopAsync force-stops the player app without waiting for it to finish.
 func (a *AndroidLauncher) forceStopAsync() {
+	bin := amPath()
+	if bin == "" {
+		return
+	}
 	//nolint:gosec // G204: package is a fixed constant
-	cmd := exec.Command("am", "force-stop", a.pkg)
+	cmd := exec.Command(bin, "force-stop", a.pkg)
 	cmd.Stdin = nil
 	cmd.Stdout = nil
 	cmd.Stderr = nil
