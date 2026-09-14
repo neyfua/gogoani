@@ -154,6 +154,11 @@ func numericBonus(aNums, bNums []int) int {
 }
 
 func matchScore(a, b string) int {
+	return FuzzyScore(a, b)
+}
+
+// FuzzyScore rates how well two titles match (0-100).
+func FuzzyScore(a, b string) int {
 	if a == b {
 		return 100
 	}

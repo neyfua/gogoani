@@ -32,11 +32,11 @@ func describePlayer(pl player.Launcher) {
 // PlayAnimeByTitle searches for an anime by title and starts the episode playback flow,
 // bypassing the anime selection step if there's an exact title match or only one result.
 func PlayAnimeByTitle(cfg *config.Config, title string, mode string) error {
-	aa := provider.NewAniDB()
+	prov := provider.NewHiAnime()
 	pl := player.NewLauncher(cfg.Player, cfg.Detach)
 	describePlayer(pl)
 
-	animes, err := aa.Search(title)
+	animes, err := prov.Search(title)
 	if err != nil {
 		return err
 	}
@@ -50,24 +50,31 @@ func PlayAnimeByTitle(cfg *config.Config, title string, mode string) error {
 		anime = animes[0]
 		found = true
 	} else {
-		// Try exact match first
+		// Try exact match first (EN and JP titles)
 		for _, a := range animes {
-			if strings.EqualFold(a.Title, title) {
+			if strings.EqualFold(a.Title, title) || (a.TitleJapanese != "" && strings.EqualFold(a.TitleJapanese, title)) {
 				anime = a
 				found = true
 				break
 			}
 		}
-		// Score candidates and pick best match
+		// Score candidates and pick best match (EN and JP titles)
 		if !found {
 			titleLower := strings.ToLower(title)
 			var bestScore int
 			bestIdx := -1
 			for i, a := range animes {
 				aLower := strings.ToLower(a.Title)
-				if score := matchScore(titleLower, aLower); score > bestScore {
+				if score := anilist.FuzzyScore(titleLower, aLower); score > bestScore {
 					bestScore = score
 					bestIdx = i
+				}
+				if a.TitleJapanese != "" {
+					jpLower := strings.ToLower(a.TitleJapanese)
+					if score := anilist.FuzzyScore(titleLower, jpLower); score > bestScore {
+						bestScore = score
+						bestIdx = i
+					}
 				}
 			}
 			if bestScore >= 50 {
@@ -84,11 +91,11 @@ func PlayAnimeByTitle(cfg *config.Config, title string, mode string) error {
 		anime = selected
 	}
 
-	return playEpisodes(cfg, aa, pl, anime, mode)
+	return playEpisodes(cfg, prov, pl, anime, mode)
 }
 
 func Run(cfg *config.Config, query string, mode string) error {
-	aa := provider.NewAniDB()
+	prov := provider.NewHiAnime()
 	pl := player.NewLauncher(cfg.Player, cfg.Detach)
 	describePlayer(pl)
 
@@ -101,7 +108,7 @@ func Run(cfg *config.Config, query string, mode string) error {
 			}
 		}
 
-		animes, err := aa.Search(query)
+		animes, err := prov.Search(query)
 		if err != nil {
 			return err
 		}
@@ -116,7 +123,7 @@ func Run(cfg *config.Config, query string, mode string) error {
 			return err
 		}
 
-		if err := playEpisodes(cfg, aa, pl, anime, mode); err != nil {
+		if err := playEpisodes(cfg, prov, pl, anime, mode); err != nil {
 			return err
 		}
 
@@ -124,9 +131,9 @@ func Run(cfg *config.Config, query string, mode string) error {
 	}
 }
 
-func playEpisodes(cfg *config.Config, aa scraper.Provider, pl player.Launcher, anime scraper.Anime, mode string) error {
+func playEpisodes(cfg *config.Config, prov scraper.Provider, pl player.Launcher, anime scraper.Anime, mode string) error {
 	logger.Log.Debug("fetching episodes", "anime", anime.Title, "mode", mode)
-	episodes, err := aa.Episodes(anime, mode)
+	episodes, err := prov.Episodes(anime, mode)
 	if err != nil {
 		return err
 	}
@@ -150,7 +157,7 @@ func playEpisodes(cfg *config.Config, aa scraper.Provider, pl player.Launcher, a
 		episode := episodes[episodeIdx]
 
 		logger.Log.Debug("fetching stream url", "anime", anime.Title, "episode", episode.Number)
-		url, referer, err := aa.StreamURL(anime, episode)
+		url, referer, err := prov.StreamURL(anime, episode)
 		if err != nil {
 			return err
 		}
@@ -208,41 +215,6 @@ func playEpisodes(cfg *config.Config, aa scraper.Provider, pl player.Launcher, a
 			return nil
 		}
 	}
-}
-
-func matchScore(query, candidate string) int {
-	if query == candidate {
-		return 100
-	}
-
-	query = strings.ReplaceAll(query, "-", " ")
-	candidate = strings.ReplaceAll(candidate, "-", " ")
-
-	qWords := strings.Fields(query)
-	cWords := strings.Fields(candidate)
-
-	if len(qWords) == 0 || len(cWords) == 0 {
-		return 0
-	}
-
-	matchCount := 0
-	for _, cw := range cWords {
-		for _, qw := range qWords {
-			if cw == qw {
-				matchCount++
-				break
-			}
-		}
-	}
-
-	if matchCount == 0 {
-		return 0
-	}
-
-	// Percent of query words matched + percent of candidate words matched
-	// This rewards specific matches (high candidate word overlap) while
-	// penalizing short/generic candidates (low query word coverage)
-	return (matchCount*100)/len(qWords) + (matchCount*100)/len(cWords)
 }
 
 func selectAnime(animes []scraper.Anime, prompt string) (scraper.Anime, error) {

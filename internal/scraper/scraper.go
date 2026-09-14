@@ -4,9 +4,10 @@ import "fmt"
 
 // Anime holds basic anime metadata.
 type Anime struct {
-	ID    string
-	Title string
-	URL   string
+	ID            string
+	Title         string
+	TitleJapanese string
+	URL           string
 }
 
 func (a Anime) String() string { return a.Title }
