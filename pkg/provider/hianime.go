@@ -426,7 +426,7 @@ func deobfuscateBlob(encoded string) (string, error) {
 // then first available.
 func streamLinks(data string) (stream string, subtitle string, err error) {
 	var track struct {
-		Src string `json:"src"`
+		Src     string `json:"src"`
 		Sources []struct {
 			Src string `json:"src"`
 		} `json:"sources"`
