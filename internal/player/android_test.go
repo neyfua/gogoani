@@ -1,6 +1,8 @@
 package player
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -91,18 +93,64 @@ func TestNewAndroidLauncherActivity(t *testing.T) {
 
 func TestAndroidLauncherStartNoAm(t *testing.T) {
 	a := NewAndroidLauncher("android_mpv")
-	err := a.Start("https://example.com/v.m3u8", "", "Test Episode 1")
+	err := a.Start("https://example.com/v.m3u8", "", "Test Episode 1", "")
 	if err == nil {
 		t.Skip("am present in environment")
 	}
 }
 
+func TestWriteAndroidMpvConfig(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "mpv", "mpv.config.mp4")
+	if err := writeAndroidMpvConfig(path, "https://example.com/watch", "https://example.com/subs.vtt"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "referrer=https://example.com/watch\nsub-file=https://example.com/subs.vtt\n"
+	if string(got) != want {
+		t.Fatalf("config = %q, want %q", got, want)
+	}
+
+	if err := writeAndroidMpvConfig(path, "https://example.com/next", ""); err != nil {
+		t.Fatal(err)
+	}
+	got, err = os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "referrer=https://example.com/next\n"; string(got) != want {
+		t.Errorf("overwritten config = %q, want %q", got, want)
+	}
+}
+
+func TestWriteAndroidMpvConfigErrors(t *testing.T) {
+	t.Run("mkdir failure", func(t *testing.T) {
+		root := t.TempDir()
+		file := filepath.Join(root, "not-a-dir")
+		if err := os.WriteFile(file, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := writeAndroidMpvConfig(filepath.Join(file, "config"), "", ""); err == nil {
+			t.Fatal("writeAndroidMpvConfig() error = nil, want mkdir error")
+		}
+	})
+	t.Run("write failure", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := writeAndroidMpvConfig(dir, "", ""); err == nil {
+			t.Fatal("writeAndroidMpvConfig() error = nil, want write error for directory path")
+		}
+	})
+}
+
 func TestPlayWithForceMediaTitle(t *testing.T) {
 	p := New("sleep")
 	p.Detach = true
-	if err := p.Start("30", "", ""); err != nil {
+	if err := p.Start("30", "", "", ""); err != nil {
 		t.Fatalf("Start() error: %v", err)
 	}
+	defer func() { _ = p.cmd.Wait() }()
 	if err := p.Stop(); err != nil {
 		t.Fatalf("Stop() error: %v", err)
 	}

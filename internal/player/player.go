@@ -14,7 +14,7 @@ import (
 // Launcher starts a video player and can stop it. Implementations are the
 // terminal player (Player) and the Android activity-manager launcher.
 type Launcher interface {
-	Start(url, referer, title string) error
+	Start(url, referer, title, subtitleURL string) error
 	Stop() error
 }
 
@@ -94,19 +94,39 @@ func (p *Player) Play(url string, args ...string) error {
 // safe inside tmux; the referer and title are passed to the player.
 //
 //nolint:gosec // G204: Player binary path is from user env var or config, verified at startup
-func (p *Player) Start(url, referer, title string) error {
+func (p *Player) Start(url, referer, title, subtitleURL string) error {
 	if p.Bin == "" {
 		return fmt.Errorf("player: no binary configured")
 	}
+	for _, value := range []string{url, referer, title, subtitleURL} {
+		if strings.ContainsAny(value, "\r\n") {
+			return fmt.Errorf("player: value contains a line break")
+		}
+	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	cmdArgs := make([]string, 0, 4)
-	cmdArgs = append(cmdArgs, url)
-	if referer != "" {
-		cmdArgs = append(cmdArgs, "--referrer="+referer)
-	}
-	if title != "" {
-		cmdArgs = append(cmdArgs, "--force-media-title="+title)
+	cmdArgs := []string{url}
+	vlc := strings.Contains(strings.ToLower(filepath.Base(p.Bin)), "vlc")
+	if vlc {
+		if referer != "" {
+			cmdArgs = append(cmdArgs, "--http-referrer", referer)
+		}
+		if title != "" {
+			cmdArgs = append(cmdArgs, "--meta-title", title)
+		}
+		if subtitleURL != "" {
+			cmdArgs = append(cmdArgs, "--sub-file", subtitleURL)
+		}
+	} else {
+		if referer != "" {
+			cmdArgs = append(cmdArgs, "--referrer="+referer)
+		}
+		if title != "" {
+			cmdArgs = append(cmdArgs, "--force-media-title="+title)
+		}
+		if subtitleURL != "" {
+			cmdArgs = append(cmdArgs, "--sub-file="+subtitleURL, "--sid=auto", "--sub-visibility=yes")
+		}
 	}
 	cmd := exec.Command(p.Bin, cmdArgs...)
 	if p.Detach {

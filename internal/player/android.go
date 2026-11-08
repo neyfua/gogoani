@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/neyfua/gogoani/internal/logger"
@@ -12,6 +13,10 @@ import (
 const (
 	mpvActivity = "is.xyz.mpv/.MPVActivity"
 	vlcActivity = "org.videolan.vlc/org.videolan.vlc.gui.video.VideoPlayerActivity"
+
+	// androidMpvConfig is the generated config ani-cli also uses. The user's
+	// mpv.conf must contain: include=/storage/emulated/0/mpv/mpv.config.mp4
+	androidMpvConfig = "/storage/emulated/0/mpv/mpv.config.mp4"
 )
 
 // AndroidLauncher launches video via the Android activity manager.
@@ -57,9 +62,24 @@ func amPath() string {
 // the activity to fully render. A leftover mpv instance that is stuck in
 // background playback is force-stopped first (also non-blocking) so the new
 // intent opens a fresh foreground window instead of being appended and hidden.
-func (a *AndroidLauncher) Start(url, referer, title string) error {
+func (a *AndroidLauncher) Start(url, referer, title, subtitleURL string) error {
+	for _, value := range []string{url, referer, title, subtitleURL} {
+		if strings.ContainsAny(value, "\r\n") {
+			return fmt.Errorf("player: value contains a line break")
+		}
+	}
+	if a.Media() == "vlc" {
+		if referer != "" || subtitleURL != "" {
+			return fmt.Errorf("player: Android VLC does not support passing custom HTTP referrer or external subtitles via intent; use android_mpv instead")
+		}
+	}
 	if err := a.hasAm(); err != nil {
 		return err
+	}
+	if a.Media() == "mpv" {
+		if err := writeAndroidMpvConfig(androidMpvConfig, referer, subtitleURL); err != nil {
+			return fmt.Errorf("player: failed to write mpv config %s: %w", androidMpvConfig, err)
+		}
 	}
 	a.forceStopAsync()
 
@@ -82,6 +102,20 @@ func (a *AndroidLauncher) Start(url, referer, title string) error {
 	}
 	_ = cmd.Process.Release()
 	return nil
+}
+
+func writeAndroidMpvConfig(path, referer, subtitleURL string) error {
+	var sb strings.Builder
+	if referer != "" {
+		sb.WriteString("referrer=" + referer + "\n")
+	}
+	if subtitleURL != "" {
+		sb.WriteString("sub-file=" + subtitleURL + "\n")
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, []byte(sb.String()), 0o644)
 }
 
 // Stop kills any running mpv instance via am force-stop. Best effort.

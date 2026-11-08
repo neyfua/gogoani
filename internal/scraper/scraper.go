@@ -31,5 +31,5 @@ func (e Episode) String() string {
 type Provider interface {
 	Search(query string) ([]Anime, error)
 	Episodes(anime Anime, mode string) ([]Episode, error)
-	StreamURL(anime Anime, episode Episode) (url string, referer string, err error)
+	StreamURL(anime Anime, episode Episode) (url string, referer string, subtitleURL string, err error)
 }

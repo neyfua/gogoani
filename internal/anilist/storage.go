@@ -15,13 +15,21 @@ const (
 )
 
 func CacheDir() (string, error) {
+	return appDir(".cache")
+}
+
+func StateDir() (string, error) {
+	return appDir(filepath.Join(".local", "state"))
+}
+
+func appDir(base string) (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("anilist: get home dir: %w", err)
 	}
-	dir := filepath.Join(home, ".cache", cacheDirName)
+	dir := filepath.Join(home, base, cacheDirName)
 	if err := os.MkdirAll(dir, 0700); err != nil {
-		return "", fmt.Errorf("anilist: create cache dir: %w", err)
+		return "", fmt.Errorf("anilist: create data dir: %w", err)
 	}
 	return dir, nil
 }
@@ -63,7 +71,7 @@ func RemoveToken() error {
 }
 
 func SaveList(entries []AnimeEntry) error {
-	dir, err := CacheDir()
+	dir, err := StateDir()
 	if err != nil {
 		return err
 	}
@@ -71,7 +79,7 @@ func SaveList(entries []AnimeEntry) error {
 }
 
 func LoadList() ([]AnimeEntry, error) {
-	dir, err := CacheDir()
+	dir, err := StateDir()
 	if err != nil {
 		return nil, err
 	}
@@ -86,7 +94,7 @@ func LoadList() ([]AnimeEntry, error) {
 }
 
 func ListPath() (string, error) {
-	dir, err := CacheDir()
+	dir, err := StateDir()
 	if err != nil {
 		return "", err
 	}

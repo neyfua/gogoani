@@ -97,3 +97,13 @@ Set a custom media player via environment variable:
 ```sh
 export GOGOANI_PLAYER=vlc
 ```
+
+Subtitle selection priority: the release's default subtitle, English, then the first available subtitle. Desktop mpv and VLC load external subtitles automatically.
+
+On Android, mpv needs shared-storage permission. Add this line to `mpv.conf`:
+
+```conf
+include=/storage/emulated/0/mpv/mpv.config.mp4
+```
+
+Android VLC does not support referrers or external subtitles through its launch intent; use `android_mpv` instead.

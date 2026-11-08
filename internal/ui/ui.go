@@ -157,7 +157,7 @@ func playEpisodes(cfg *config.Config, prov scraper.Provider, pl player.Launcher,
 		episode := episodes[episodeIdx]
 
 		logger.Log.Debug("fetching stream url", "anime", anime.Title, "episode", episode.Number)
-		url, referer, err := prov.StreamURL(anime, episode)
+		url, referer, subtitleURL, err := prov.StreamURL(anime, episode)
 		if err != nil {
 			return err
 		}
@@ -168,7 +168,7 @@ func playEpisodes(cfg *config.Config, prov scraper.Provider, pl player.Launcher,
 
 		title := fmt.Sprintf("%s Episode %d", anime.Title, episode.Number)
 		logger.Log.Debug("playing", "url", url, "referer", referer, "title", title)
-		if err := pl.Start(url, referer, title); err != nil {
+		if err := pl.Start(url, referer, title, subtitleURL); err != nil {
 			return err
 		}
 

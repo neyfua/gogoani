@@ -22,7 +22,7 @@ func Init(debug bool) error {
 			return err
 		}
 
-		logDir := filepath.Join(homeDir, ".local", "state", "gogoani")
+		logDir := filepath.Join(homeDir, ".cache", "gogoani")
 		if err := os.MkdirAll(logDir, 0700); err != nil {
 			return err
 		}

@@ -41,7 +41,6 @@ var (
 	airedRe  = regexp.MustCompile(`Aired:</span>[\s\S]{0,300}?((?:19|20)\d{2})`)
 	epRe     = regexp.MustCompile(`data-number="([^"]*)"[\s\S]*?data-id="([0-9]+)"[\s\S]*?/watch/([^"?]+)\?ep=`)
 	blobRe   = regexp.MustCompile(`window\.__P="([^"]*)"`)
-	m3u8Re   = regexp.MustCompile(`"src":"([^"]*\.m3u8[^"]*)"`)
 	srvBlkRe = regexp.MustCompile(`<div class="item server-item"[\s\S]*?</div>`)
 	srvAtrRe = regexp.MustCompile(`data-type="([^"]*)"[\s\S]*?data-server-name="([^"]*)"[\s\S]*?data-hash="([^"]*)"`)
 )
@@ -422,14 +421,66 @@ func deobfuscateBlob(encoded string) (string, error) {
 	return string(out), nil
 }
 
-func (h *HiAnime) StreamURL(anime scraper.Anime, episode scraper.Episode) (string, string, error) {
+// streamLinks extracts the HLS master playlist and preferred subtitle track
+// from the deobfuscated embed JSON. Subtitles are ranked: default, English,
+// then first available.
+func streamLinks(data string) (stream string, subtitle string, err error) {
+	var track struct {
+		Src string `json:"src"`
+		Sources []struct {
+			Src string `json:"src"`
+		} `json:"sources"`
+		Subtitles []struct {
+			Src     string `json:"src"`
+			Lang    string `json:"lang"`
+			Label   string `json:"label"`
+			Default bool   `json:"default"`
+		} `json:"subtitles"`
+	}
+	if err := json.Unmarshal([]byte(data), &track); err != nil {
+		return "", "", fmt.Errorf("parse embed json: %w", err)
+	}
+
+	master := track.Src
+	for _, s := range track.Sources {
+		if master == "" && strings.Contains(s.Src, ".m3u8") {
+			master = s.Src
+			break
+		}
+	}
+	if master == "" {
+		return "", "", fmt.Errorf("no m3u8 URL in deobfuscated JSON")
+	}
+
+	var english string
+	for _, s := range track.Subtitles {
+		if s.Src == "" {
+			continue
+		}
+		if s.Default {
+			return master, s.Src, nil
+		}
+		if english == "" && (strings.Contains(strings.ToLower(s.Lang+s.Label), "english") || strings.EqualFold(s.Lang, "en")) {
+			english = s.Src
+		}
+		if subtitle == "" {
+			subtitle = s.Src
+		}
+	}
+	if english != "" {
+		subtitle = english
+	}
+	return master, subtitle, nil
+}
+
+func (h *HiAnime) StreamURL(anime scraper.Anime, episode scraper.Episode) (string, string, string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
 	// Step 1: Find the episode data-id by re-fetching episodes
 	html, err := fetchEpisodeMaps(ctx, anime.ID)
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 
 	entries := parseEpisodeEntries(html, anime.ID)
@@ -445,7 +496,7 @@ func (h *HiAnime) StreamURL(anime scraper.Anime, episode scraper.Episode) (strin
 	}
 
 	if dataID == "" {
-		return "", "", fmt.Errorf("episode %d not found", episode.Number)
+		return "", "", "", fmt.Errorf("episode %d not found", episode.Number)
 	}
 
 	// Step 2: Fetch servers for this episode (JSON envelope with html field)
@@ -453,12 +504,12 @@ func (h *HiAnime) StreamURL(anime scraper.Anime, episode scraper.Episode) (strin
 	resp2, err := httpclient.Request(ctx, "GET", serversURL, nil, nil)
 	if err != nil {
 		logger.Log.Error("hianime: servers request failed", "error", err)
-		return "", "", err
+		return "", "", "", err
 	}
 	defer resp2.Body.Close()
 
 	if resp2.StatusCode != 200 {
-		return "", "", fmt.Errorf("servers status %d", resp2.StatusCode)
+		return "", "", "", fmt.Errorf("servers status %d", resp2.StatusCode)
 	}
 
 	var serversResp struct {
@@ -467,7 +518,7 @@ func (h *HiAnime) StreamURL(anime scraper.Anime, episode scraper.Episode) (strin
 	}
 	if err := json.NewDecoder(io.LimitReader(resp2.Body, 10*1024*1024)).Decode(&serversResp); err != nil {
 		logger.Log.Error("hianime: failed to decode servers response", "error", err)
-		return "", "", err
+		return "", "", "", err
 	}
 
 	serversStr := serversResp.HTML
@@ -492,18 +543,18 @@ func (h *HiAnime) StreamURL(anime scraper.Anime, episode scraper.Episode) (strin
 		}
 	}
 	if hash == "" {
-		return "", "", fmt.Errorf("no ZokoAnime server found")
+		return "", "", "", fmt.Errorf("no ZokoAnime server found")
 	}
 
 	// Step 4: Decode plain base64 hash to get embed URL
 	// (XOR deobfuscation is only for the window.__P blob, not the data-hash)
 	embedBytes, err := base64.StdEncoding.DecodeString(hash)
 	if err != nil {
-		return "", "", fmt.Errorf("decode embed URL: %w", err)
+		return "", "", "", fmt.Errorf("decode embed URL: %w", err)
 	}
 	embedURL := string(embedBytes)
 	if !strings.HasPrefix(embedURL, "https://") {
-		return "", "", fmt.Errorf("invalid embed URL scheme")
+		return "", "", "", fmt.Errorf("invalid embed URL scheme")
 	}
 
 	// Extract referer from embed URL origin
@@ -519,41 +570,39 @@ func (h *HiAnime) StreamURL(anime scraper.Anime, episode scraper.Episode) (strin
 	resp3, err := httpclient.Request(ctx, "GET", embedURL, nil, nil)
 	if err != nil {
 		logger.Log.Error("hianime: embed page request failed", "error", err)
-		return "", "", err
+		return "", "", "", err
 	}
 	defer resp3.Body.Close()
 
 	if resp3.StatusCode != 200 {
-		return "", "", fmt.Errorf("embed page status %d", resp3.StatusCode)
+		return "", "", "", fmt.Errorf("embed page status %d", resp3.StatusCode)
 	}
 
 	embedBody, err := io.ReadAll(io.LimitReader(resp3.Body, 10*1024*1024))
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 
 	blobMatch := blobRe.FindStringSubmatch(string(embedBody))
 	if blobMatch == nil {
-		return "", "", fmt.Errorf("no __P blob in embed page")
+		return "", "", "", fmt.Errorf("no __P blob in embed page")
 	}
 
 	// Step 6: Deobfuscate the blob to get JSON
 	jsonStr, err := deobfuscateBlob(blobMatch[1])
 	if err != nil {
-		return "", "", fmt.Errorf("deobfuscate blob: %w", err)
+		return "", "", "", fmt.Errorf("deobfuscate blob: %w", err)
 	}
 
-	// Step 7: Extract m3u8 URL from JSON
-	m3u8Match := m3u8Re.FindStringSubmatch(jsonStr)
-	if m3u8Match == nil {
-		return "", "", fmt.Errorf("no m3u8 URL in deobfuscated JSON")
+	// Step 7: Extract HLS stream and preferred subtitle URL from JSON.
+	streamURL, subtitleURL, err := streamLinks(jsonStr)
+	if err != nil {
+		return "", "", "", err
+	}
+	if !strings.HasPrefix(streamURL, "https://") || (subtitleURL != "" && !strings.HasPrefix(subtitleURL, "https://")) {
+		return "", "", "", fmt.Errorf("invalid stream or subtitle URL scheme")
 	}
 
-	streamURL := strings.ReplaceAll(m3u8Match[1], `\/`, `/`)
-	if !strings.HasPrefix(streamURL, "https://") {
-		return "", "", fmt.Errorf("invalid stream URL scheme")
-	}
-
-	logger.Log.Debug("hianime: stream resolved", "anime", anime.Title, "episode", episode.Number, "mode", episode.Mode)
-	return streamURL, refr, nil
+	logger.Log.Debug("hianime: stream resolved", "anime", anime.Title, "episode", episode.Number, "mode", episode.Mode, "hasSubtitle", subtitleURL != "")
+	return streamURL, refr, subtitleURL, nil
 }

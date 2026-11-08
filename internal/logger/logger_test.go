@@ -1,6 +1,8 @@
 package logger
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -34,4 +36,16 @@ func TestLogCanWrite(t *testing.T) {
 	Log.Info("test message")
 	Log.Warn("test message")
 	Log.Error("test message")
+}
+
+func TestDebugLogDirectory(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if err := Init(true); err != nil {
+		t.Fatal(err)
+	}
+	Log.Debug("test")
+	if _, err := os.Stat(filepath.Join(home, ".cache", "gogoani", "gogoani.log")); err != nil {
+		t.Fatal(err)
+	}
 }
