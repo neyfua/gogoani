@@ -20,7 +20,7 @@
 ### Prerequisites
 
 - **Go 1.26+** - [Download](https://go.dev/dl/)
-- **mpv** - Media player (or set `GOGOANI_PLAYER` env var for alternatives)
+- **mpv** - Default media player (configure alternatives in `~/.config/gogoani/config.yaml`)
 - **fzf** (optional) - For fuzzy search interface
 - **AniList API token** (optional) - For watch history sync
 
@@ -92,10 +92,10 @@ gogoani anilist --status dropped
 
 ### Media Player
 
-Set a custom media player via environment variable:
+Set a custom media player in `~/.config/gogoani/config.yaml` (create the file manually):
 
-```sh
-export GOGOANI_PLAYER=vlc
+```yaml
+player: vlc # or mpv
 ```
 
 Subtitle selection priority: the release's default subtitle, English, then the first available subtitle. Desktop mpv and VLC load external subtitles automatically.

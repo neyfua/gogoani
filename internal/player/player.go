@@ -46,7 +46,7 @@ func NewLauncher(bin string, detach bool) Launcher {
 }
 
 // isAndroidPreferred reports whether the Android am-start launcher should be used.
-// A player named with "android" (e.g. GOGOANI_PLAYER=android_mpv), a Termux/
+// A player named with "android" (e.g. android_mpv), a Termux/
 // Android environment, or the presence of the `am` command are all decisive.
 func isAndroidPreferred(bin string) bool {
 	b := strings.ToLower(bin)
@@ -115,7 +115,9 @@ func (p *Player) Start(url, referer, title, subtitleURL string) error {
 			cmdArgs = append(cmdArgs, "--meta-title", title)
 		}
 		if subtitleURL != "" {
-			cmdArgs = append(cmdArgs, "--sub-file", subtitleURL)
+			// --sub-file treats its value as a local path (VLC 3 prefixes
+			// file:// to http URLs); --input-slave accepts remote URLs.
+			cmdArgs = append(cmdArgs, "--input-slave", subtitleURL)
 		}
 	} else {
 		if referer != "" {

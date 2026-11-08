@@ -1,10 +1,14 @@
 package config
 
 import (
-	"cmp"
+	"errors"
+	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/neyfua/gogoani/internal/anilist"
+	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
@@ -19,7 +23,6 @@ type AniListConfig struct {
 }
 
 func Load() *Config {
-	player := cmp.Or(os.Getenv("GOGOANI_PLAYER"), "mpv")
 	token := os.Getenv("GOGOANI_ANILIST_TOKEN")
 	if token == "" {
 		if cached, err := anilist.LoadToken(); err == nil {
@@ -27,13 +30,41 @@ func Load() *Config {
 		}
 	}
 	return &Config{
-		Player:   player,
+		Player:   loadPlayer(),
 		Detach:   detach(),
 		AutoSync: token != "",
 		AniList: AniListConfig{
 			Token: token,
 		},
 	}
+}
+
+// loadPlayer reads the optional, user-authored config without creating it.
+func loadPlayer() string {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "gogoani: locating config: %v\n", err)
+		return "mpv"
+	}
+	path := filepath.Join(dir, "gogoani", "config.yaml")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			fmt.Fprintf(os.Stderr, "gogoani: ignoring %s: %v\n", path, err)
+		}
+		return "mpv"
+	}
+	var cfg struct {
+		Player string `yaml:"player"`
+	}
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "gogoani: ignoring %s: %v\n", path, err)
+		return "mpv"
+	}
+	if p := strings.TrimSpace(cfg.Player); p != "" {
+		return p
+	}
+	return "mpv"
 }
 
 // detach defaults to true (detach player from the terminal) unless

@@ -63,7 +63,7 @@ func TestStartArgs(t *testing.T) {
 	}{
 		{"mpv subtitles", "mpv", subtitle, []string{video, "--referrer=" + referer, "--force-media-title=" + title, "--sub-file=" + subtitle, "--sid=auto", "--sub-visibility=yes"}},
 		{"mpv no subtitles", "mpv", "", []string{video, "--referrer=" + referer, "--force-media-title=" + title}},
-		{"vlc subtitles", "vlc", subtitle, []string{video, "--http-referrer", referer, "--meta-title", title, "--sub-file", subtitle}},
+		{"vlc subtitles", "vlc", subtitle, []string{video, "--http-referrer", referer, "--meta-title", title, "--input-slave", subtitle}},
 		{"vlc no subtitles", "vlc", "", []string{video, "--http-referrer", referer, "--meta-title", title}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
