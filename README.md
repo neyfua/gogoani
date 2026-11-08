@@ -68,7 +68,7 @@ gogoani "Overflow"
 gogoani --dub "Redo of Healer"
 
 # With debug logging
-gogoani --debug "Boku no Pico"
+gogoani --debug "SHIROHIYO - Reincarnated as a Neglected Noble: Raising My Baby Brother With Memories From My Past Life"
 ```
 
 ### AniList Commands
