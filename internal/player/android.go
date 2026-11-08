@@ -12,7 +12,7 @@ import (
 
 const (
 	mpvActivity = "is.xyz.mpv/.MPVActivity"
-	vlcActivity = "org.videolan.vlc/org.videolan.vlc.gui.video.VideoPlayerActivity"
+	mpvPackage  = "is.xyz.mpv"
 
 	// androidMpvConfig is the generated config ani-cli also uses. The user's
 	// mpv.conf must contain: include=/storage/emulated/0/mpv/mpv.config.mp4
@@ -26,20 +26,8 @@ type AndroidLauncher struct {
 	pkg      string
 }
 
-func NewAndroidLauncher(bin string) *AndroidLauncher {
-	activity, pkg := mpvActivity, "is.xyz.mpv"
-	if strings.Contains(strings.ToLower(bin), "vlc") {
-		activity, pkg = vlcActivity, "org.videolan.vlc"
-	}
-	return &AndroidLauncher{activity: activity, pkg: pkg}
-}
-
-// Media returns the display name of the Android media app (mpv or vlc).
-func (a *AndroidLauncher) Media() string {
-	if strings.Contains(a.activity, "vlc") {
-		return "vlc"
-	}
-	return "mpv"
+func NewAndroidLauncher() *AndroidLauncher {
+	return &AndroidLauncher{activity: mpvActivity, pkg: mpvPackage}
 }
 
 // amPath returns the am binary or "" if unavailable.
@@ -68,18 +56,11 @@ func (a *AndroidLauncher) Start(url, referer, title, subtitleURL string) error {
 			return fmt.Errorf("player: value contains a line break")
 		}
 	}
-	if a.Media() == "vlc" {
-		if referer != "" || subtitleURL != "" {
-			return fmt.Errorf("player: Android VLC does not support passing custom HTTP referrer or external subtitles via intent; use android_mpv instead")
-		}
-	}
 	if err := a.hasAm(); err != nil {
 		return err
 	}
-	if a.Media() == "mpv" {
-		if err := writeAndroidMpvConfig(androidMpvConfig, referer, subtitleURL); err != nil {
-			return fmt.Errorf("player: failed to write mpv config %s: %w", androidMpvConfig, err)
-		}
+	if err := writeAndroidMpvConfig(androidMpvConfig, referer, subtitleURL); err != nil {
+		return fmt.Errorf("player: failed to write mpv config %s: %w", androidMpvConfig, err)
 	}
 	a.forceStopAsync()
 

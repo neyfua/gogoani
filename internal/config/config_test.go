@@ -9,7 +9,7 @@ import (
 func TestLoadPlayer(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
-	t.Setenv("GOGOANI_PLAYER", "vlc") // Legacy environment variable is ignored.
+	t.Setenv("GOGOANI_PLAYER", "unsupported") // Legacy environment variable is ignored.
 	path := filepath.Join(dir, "gogoani", "config.yaml")
 
 	if got := Load().Player; got != "mpv" {
@@ -24,14 +24,14 @@ func TestLoadPlayer(t *testing.T) {
 	for _, tt := range []struct {
 		name, yaml, want string
 	}{
-		{"vlc", "player: vlc # or mpv\n", "vlc"},
+		{"android mpv", "player: android_mpv\n", "android_mpv"},
 		{"mpv", "player: mpv\n", "mpv"},
-		{"quoted", "player: 'vlc'\n", "vlc"},
+		{"quoted", "player: 'mpv'\n", "mpv"},
 		{"empty file", "", "mpv"},
-		{"empty player", "player: # vlc or mpv\n", "mpv"},
+		{"empty player", "player: # mpv or android_mpv\n", "mpv"},
 		{"blank player", "player: '  '\n", "mpv"},
 		{"malformed", "player: [\n", "mpv"},
-		{"wrong type", "player: [vlc]\n", "mpv"},
+		{"wrong type", "player: [mpv]\n", "mpv"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			if err := os.WriteFile(path, []byte(tt.yaml), 0o600); err != nil {

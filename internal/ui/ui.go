@@ -23,7 +23,7 @@ import (
 func describePlayer(pl player.Launcher) {
 	switch launcher := pl.(type) {
 	case *player.AndroidLauncher:
-		fmt.Fprintf(os.Stderr, "▶ %s (Android app)\n", launcher.Media())
+		fmt.Fprintf(os.Stderr, "▶ mpv (Android app)\n")
 	case *player.Player:
 		fmt.Fprintf(os.Stderr, "▶ %s\n", launcher.Bin)
 	}

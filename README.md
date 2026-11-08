@@ -20,7 +20,7 @@
 ### Prerequisites
 
 - **Go 1.26+** - [Download](https://go.dev/dl/)
-- **mpv** - Default media player (configure alternatives in `~/.config/gogoani/config.yaml`)
+- **mpv** - Media player
 - **fzf** (optional) - For fuzzy search interface
 - **AniList API token** (optional) - For watch history sync
 
@@ -92,13 +92,13 @@ gogoani anilist --status dropped
 
 ### Media Player
 
-Set a custom media player in `~/.config/gogoani/config.yaml` (create the file manually):
+The only supported media player is mpv. The optional `~/.config/gogoani/config.yaml` can select the Android launcher (create it manually):
 
 ```yaml
-player: vlc # or mpv
+player: mpv
 ```
 
-Subtitle selection priority: the release's default subtitle, English, then the first available subtitle. Desktop mpv and VLC load external subtitles automatically.
+Subtitle selection priority: the release's default subtitle, English, then the first available subtitle. mpv loads external subtitles automatically.
 
 On Android, mpv needs shared-storage permission. Add this line to `mpv.conf`:
 
@@ -106,4 +106,4 @@ On Android, mpv needs shared-storage permission. Add this line to `mpv.conf`:
 include=/storage/emulated/0/mpv/mpv.config.mp4
 ```
 
-Android VLC does not support referrers or external subtitles through its launch intent; use `android_mpv` instead.
+Set `player: android_mpv` in the config on Termux.

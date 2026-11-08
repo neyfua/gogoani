@@ -20,7 +20,7 @@ type Launcher interface {
 
 // Player launches an external media player.
 type Player struct {
-	Bin    string // e.g. "mpv", "vlc"
+	Bin    string // mpv executable
 	Detach bool   // detach from the terminal (setsid + /dev/null stdio)
 	cmd    *exec.Cmd
 	mu     sync.Mutex
@@ -32,12 +32,12 @@ func New(bin string) *Player {
 }
 
 // NewLauncher returns the right launcher for the environment. On Android/Termux
-// it returns an AndroidLauncher that opens the video via the mpv/vlc app;
+// it returns an AndroidLauncher that opens the video via the mpv app;
 // otherwise it returns a terminal Player.
 func NewLauncher(bin string, detach bool) Launcher {
 	if isAndroidPreferred(bin) {
 		logger.Log.Debug("player: using Android am-start launcher", "bin", bin, "am", HasAmStart(), "android", IsAndroid())
-		return NewAndroidLauncher(bin)
+		return NewAndroidLauncher()
 	}
 	p := New(bin)
 	p.Detach = detach
@@ -106,29 +106,14 @@ func (p *Player) Start(url, referer, title, subtitleURL string) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	cmdArgs := []string{url}
-	vlc := strings.Contains(strings.ToLower(filepath.Base(p.Bin)), "vlc")
-	if vlc {
-		if referer != "" {
-			cmdArgs = append(cmdArgs, "--http-referrer", referer)
-		}
-		if title != "" {
-			cmdArgs = append(cmdArgs, "--meta-title", title)
-		}
-		if subtitleURL != "" {
-			// --sub-file treats its value as a local path (VLC 3 prefixes
-			// file:// to http URLs); --input-slave accepts remote URLs.
-			cmdArgs = append(cmdArgs, "--input-slave", subtitleURL)
-		}
-	} else {
-		if referer != "" {
-			cmdArgs = append(cmdArgs, "--referrer="+referer)
-		}
-		if title != "" {
-			cmdArgs = append(cmdArgs, "--force-media-title="+title)
-		}
-		if subtitleURL != "" {
-			cmdArgs = append(cmdArgs, "--sub-file="+subtitleURL, "--sid=auto", "--sub-visibility=yes")
-		}
+	if referer != "" {
+		cmdArgs = append(cmdArgs, "--referrer="+referer)
+	}
+	if title != "" {
+		cmdArgs = append(cmdArgs, "--force-media-title="+title)
+	}
+	if subtitleURL != "" {
+		cmdArgs = append(cmdArgs, "--sub-file="+subtitleURL, "--sid=auto", "--sub-visibility=yes")
 	}
 	cmd := exec.Command(p.Bin, cmdArgs...)
 	if p.Detach {

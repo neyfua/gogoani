@@ -69,30 +69,22 @@ func TestHasAmStart(t *testing.T) {
 }
 
 func TestNewAndroidLauncherActivity(t *testing.T) {
-	mpv := NewAndroidLauncher("android_mpv")
-	if !strings.Contains(mpv.activity, "is.xyz.mpv") {
-		t.Errorf("mpv activity = %q", mpv.activity)
+	launcher := NewAndroidLauncher()
+	if !strings.Contains(launcher.activity, "is.xyz.mpv") {
+		t.Errorf("mpv activity = %q", launcher.activity)
 	}
-	if mpv.pkg != "is.xyz.mpv" {
-		t.Errorf("mpv pkg = %q", mpv.pkg)
-	}
-
-	vlc := NewAndroidLauncher("android_vlc")
-	if !strings.Contains(vlc.activity, "org.videolan.vlc") {
-		t.Errorf("vlc activity = %q", vlc.activity)
-	}
-	if vlc.pkg != "org.videolan.vlc" {
-		t.Errorf("vlc pkg = %q", vlc.pkg)
+	if launcher.pkg != "is.xyz.mpv" {
+		t.Errorf("mpv pkg = %q", launcher.pkg)
 	}
 
-	defaultLauncher := NewAndroidLauncher("mpv")
+	defaultLauncher := NewAndroidLauncher()
 	if defaultLauncher.pkg != "is.xyz.mpv" {
 		t.Errorf("default launcher pkg = %q, want is.xyz.mpv", defaultLauncher.pkg)
 	}
 }
 
 func TestAndroidLauncherStartNoAm(t *testing.T) {
-	a := NewAndroidLauncher("android_mpv")
+	a := NewAndroidLauncher()
 	err := a.Start("https://example.com/v.m3u8", "", "Test Episode 1", "")
 	if err == nil {
 		t.Skip("am present in environment")
